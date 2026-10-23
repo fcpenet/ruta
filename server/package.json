@@ -1,0 +1,28 @@
+{
+  "name": "ruta-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "start": "node src/index.ts",
+    "test": "node --test 'src/**/*.test.ts'",
+    "typecheck": "tsc --noEmit",
+    "test:pg": "pglite-server -p 55432 -m 10 -r \"env TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/postgres npm test\""
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.13.13",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@electric-sql/pglite-socket": "^0.2.14",
+    "@types/node": "^24.19.2",
+    "typescript": "~6.0.3"
+  }
+}

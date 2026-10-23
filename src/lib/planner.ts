@@ -32,6 +32,8 @@ const WALK_M_PER_MIN = 75;
 const WALK_DETOUR = 1.3;
 const SPEED_KMH: Record<VehicleType, number> = { jeep: 18, modern_jeep: 20, tricycle: 15 };
 const TRANSFER_PENALTY_MIN = 5;
+/** Prefer confirmed routes when an unverified one is only slightly faster. */
+const UNVERIFIED_PENALTY_MIN = 3;
 const MIN_RIDE_KM = 0.3;
 /** Walking the whole way is offered when it's shorter than this. */
 const WALK_ONLY_MAX_M = 1200;
@@ -79,11 +81,13 @@ export function planTrips(origin: LngLat, destination: LngLat, opts: PlanOptions
   const trips: Trip[] = [];
 
   // Direct trips: one route serves both ends.
+  const directIds = new Set<string>();
   for (const [id, from] of fromCands) {
     const to = toCands.get(id);
     if (!to) continue;
     const ride = rideBetween(from.route, from.coords, from.snap.alongKm, to.snap.alongKm);
     if (!ride || ride.km < MIN_RIDE_KM) continue;
+    directIds.add(id);
     trips.push(
       assemble([
         walkLeg(origin, from.snap.point, ctx, from.route),
@@ -96,7 +100,8 @@ export function planTrips(origin: LngLat, destination: LngLat, opts: PlanOptions
   // One-transfer trips: route A from the origin, route B to the destination.
   for (const [idA, a] of fromCands) {
     for (const [idB, b] of toCands) {
-      if (idA === idB) continue;
+      // Transferring never beats staying on a route that already goes all the way.
+      if (idA === idB || directIds.has(idA) || directIds.has(idB)) continue;
       let best: Trip | null = null;
       for (const t of transferPoints(a.coords, b.coords, transferRadiusM)) {
         const onA = snapToLine(a.coords, t);
@@ -199,6 +204,7 @@ function rideLeg(route: TransitRoute, ride: Ride, ctx: LegContext): RideLeg {
     fare: computeFare(p.type, ride.km, ctx.discount, p.city),
     path: ride.path,
     trafficLevel: traffic.level,
+    unverified: p.source === 'community' && p.status !== 'verified',
   };
 }
 
@@ -234,7 +240,8 @@ function assemble(rawLegs: Leg[]): Trip {
 }
 
 function score(t: Trip): number {
-  return t.totalMinutes + t.transfers * TRANSFER_PENALTY_MIN;
+  const unverified = t.legs.filter((l) => l.kind === 'ride' && l.unverified).length;
+  return t.totalMinutes + t.transfers * TRANSFER_PENALTY_MIN + unverified * UNVERIFIED_PENALTY_MIN;
 }
 
 function dedupe(trips: Trip[]): Trip[] {

@@ -3,7 +3,7 @@ import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import type { CircleLayerSpecification, LineLayerSpecification } from 'maplibre-gl';
 
 import { getAllTraffic, TRAFFIC_COLORS, trafficSegments } from '@/lib/traffic';
-import { trafficTime, useAppStore } from '@/store/useAppStore';
+import { trafficTime, useAllRoutes, useAppStore } from '@/store/useAppStore';
 import type { LngLat } from '@/types';
 
 /**
@@ -33,7 +33,7 @@ export interface RutaMapProps {
 }
 
 export function useMapData(): MapData {
-  const dataset = useAppStore((s) => s.dataset);
+  const allRoutes = useAllRoutes();
   const highlighted = useAppStore((s) => s.highlightedRouteId);
   const trips = useAppStore((s) => s.trips);
   const selectedTripId = useAppStore((s) => s.selectedTripId);
@@ -47,7 +47,7 @@ export function useMapData(): MapData {
   const routes = useMemo<FeatureCollection<LineString>>(
     () => ({
       type: 'FeatureCollection',
-      features: dataset.routes.map((r) => ({
+      features: allRoutes.map((r) => ({
         ...r,
         properties: {
           ...r.properties,
@@ -56,7 +56,7 @@ export function useMapData(): MapData {
         },
       })),
     }),
-    [dataset, highlighted, trip]
+    [allRoutes, highlighted, trip]
   );
 
   const traffic = useMemo<FeatureCollection<LineString>>(() => {
@@ -124,9 +124,9 @@ export function useMapData(): MapData {
   }, [origin, destination, tripFc]);
 
   const focus = useMemo(() => {
-    const r = dataset.routes.find((x) => x.properties.id === highlighted);
+    const r = allRoutes.find((x) => x.properties.id === highlighted);
     return r ? bbox(r.geometry.coordinates as LngLat[]) : null;
-  }, [dataset, highlighted]);
+  }, [allRoutes, highlighted]);
 
   return { routes, traffic, trip: tripFc, points, bounds, focus };
 }
@@ -199,6 +199,69 @@ export const LAYER_STYLES: {
         ['get', 'color'],
       ],
       'circle-stroke-width': 3,
+    },
+  },
+};
+
+export interface DrawMapProps {
+  /** Vertices of the route being drawn, in order. */
+  points: LngLat[];
+  /** Tap/click on the map. */
+  onAddPoint: (coord: LngLat) => void;
+}
+
+/** Existing routes (faint, for reference) plus the draft line and its vertices. */
+export function useDraftData(points: LngLat[]) {
+  const allRoutes = useAllRoutes();
+  const reference = useMemo<FeatureCollection<LineString>>(
+    () => ({
+      type: 'FeatureCollection',
+      features: allRoutes.map((r) => ({
+        ...r,
+        properties: { ...r.properties, highlighted: false, dimmed: true },
+      })),
+    }),
+    [allRoutes]
+  );
+  const draft = useMemo<FeatureCollection>(
+    () => ({
+      type: 'FeatureCollection',
+      features: [
+        ...(points.length >= 2
+          ? [
+              {
+                type: 'Feature' as const,
+                properties: {},
+                geometry: { type: 'LineString' as const, coordinates: points },
+              },
+            ]
+          : []),
+        ...points.map((p, i) => ({
+          type: 'Feature' as const,
+          properties: {
+            role: i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'mid',
+          },
+          geometry: { type: 'Point' as const, coordinates: p },
+        })),
+      ],
+    }),
+    [points]
+  );
+  return { reference, draft };
+}
+
+export const DRAFT_STYLES: { line: LineStyle; points: CircleStyle } = {
+  line: {
+    filter: ['==', ['geometry-type'], 'LineString'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#0B6E4F', 'line-width': 5 },
+  },
+  points: {
+    paint: {
+      'circle-radius': ['match', ['get', 'role'], 'mid', 5, 8],
+      'circle-color': ['match', ['get', 'role'], 'start', '#1A7F37', 'end', '#CF222E', '#ffffff'],
+      'circle-stroke-color': '#0B6E4F',
+      'circle-stroke-width': 2,
     },
   },
 };

@@ -90,7 +90,7 @@ function TripSummary({ trip }: { trip: Trip }) {
         {rides.map((r, i) => (
           <View key={r.routeId + i} style={styles.chipRow}>
             {i > 0 && <ThemedText type="small">›</ThemedText>}
-            <Chip color={r.color} label={r.signboard} />
+            <Chip color={r.color} label={r.unverified ? `⚠ ${r.signboard}` : r.signboard} />
           </View>
         ))}
       </View>
@@ -152,6 +152,11 @@ function Step({ leg }: { leg: Leg }) {
         <ThemedText type="small" themeColor="textSecondary">
           Hanapin ang karatula: “{leg.signboard}”
         </ThemedText>
+        {leg.unverified && (
+          <ThemedText type="small" style={styles.unverified}>
+            ⚠ Added by a commuter, not yet confirmed — double-check with the barker or driver.
+          </ThemedText>
+        )}
         <ThemedText type="small">
           Bumaba sa <ThemedText type="smallBold">{leg.alightName}</ThemedText> — “Para po!”
         </ThemedText>
@@ -185,5 +190,6 @@ const styles = StyleSheet.create({
   stepBody: { flex: 1, gap: Spacing.half },
   rideBody: { borderLeftWidth: 3, paddingLeft: Spacing.two },
   rideMeta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one, flexWrap: 'wrap' },
+  unverified: { color: '#9A6700' },
   trafficDot: { width: 8, height: 8, borderRadius: 4, marginLeft: Spacing.one },
 });

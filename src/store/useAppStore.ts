@@ -1,8 +1,10 @@
+import { useMemo } from 'react';
 import { create } from 'zustand';
 
+import { API_URL, confirmRoute, fetchCommunityRoutes } from '@/lib/community';
 import { getBundledRoutes, landmarks } from '@/lib/dataSource';
 import { planTrips } from '@/lib/planner';
-import type { DiscountType, LngLat, RouteDataset, Trip } from '@/types';
+import type { DiscountType, LngLat, RouteDataset, TransitRoute, Trip } from '@/types';
 
 export interface Place {
   name: string;
@@ -11,11 +13,18 @@ export interface Place {
 
 export type PickTarget = 'origin' | 'destination';
 
+export type CommunityStatus = 'disabled' | 'idle' | 'loading' | 'ready' | 'error';
+
 /** Default map centre and origin: Cubao. */
 export const DEFAULT_CENTER: LngLat = [121.0527, 14.6195];
 
 interface AppState {
   dataset: RouteDataset;
+  /** Routes added by commuters through the community API. */
+  communityRoutes: TransitRoute[];
+  communityStatus: CommunityStatus;
+  /** Community route IDs this device has confirmed this session. */
+  confirmedIds: string[];
   origin: Place | null;
   destination: Place | null;
   pickTarget: PickTarget;
@@ -29,6 +38,10 @@ interface AppState {
   trafficTick: number;
 
   setDataset: (d: RouteDataset) => void;
+  loadCommunityRoutes: () => Promise<void>;
+  /** Adds or replaces a community route (after submit or confirm). */
+  upsertCommunityRoute: (r: TransitRoute) => void;
+  confirmCommunityRoute: (id: string) => Promise<void>;
   setPlace: (target: PickTarget, place: Place | null) => void;
   setPickTarget: (t: PickTarget) => void;
   swapPlaces: () => void;
@@ -49,10 +62,20 @@ export function trafficTime(simulatedHour: number | null): Date {
   return new Date(d.getTime() + (simulatedHour - 8) * 3600_000);
 }
 
-function replan(s: Pick<AppState, 'origin' | 'destination' | 'dataset' | 'discount' | 'simulatedHour'>) {
+type PlanInputs = Pick<
+  AppState,
+  'origin' | 'destination' | 'dataset' | 'communityRoutes' | 'discount' | 'simulatedHour'
+>;
+
+/** Bundled routes plus community routes; what the planner, map and Routes tab use. */
+export function selectAllRoutes(s: Pick<AppState, 'dataset' | 'communityRoutes'>): TransitRoute[] {
+  return s.communityRoutes.length ? [...s.dataset.routes, ...s.communityRoutes] : s.dataset.routes;
+}
+
+function replan(s: PlanInputs) {
   if (!s.origin || !s.destination) return { trips: [], selectedTripId: null };
   const trips = planTrips(s.origin.coord, s.destination.coord, {
-    routes: s.dataset.routes,
+    routes: selectAllRoutes(s),
     landmarks,
     discount: s.discount,
     at: trafficTime(s.simulatedHour),
@@ -62,6 +85,9 @@ function replan(s: Pick<AppState, 'origin' | 'destination' | 'dataset' | 'discou
 
 export const useAppStore = create<AppState>((set, get) => ({
   dataset: getBundledRoutes(),
+  communityRoutes: [],
+  communityStatus: API_URL ? 'idle' : 'disabled',
+  confirmedIds: [],
   origin: null,
   destination: null,
   pickTarget: 'destination',
@@ -73,6 +99,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   trafficTick: 0,
 
   setDataset: (dataset) => set({ dataset, ...replan({ ...get(), dataset }) }),
+  loadCommunityRoutes: async () => {
+    if (!API_URL) return;
+    set({ communityStatus: 'loading' });
+    try {
+      const communityRoutes = await fetchCommunityRoutes();
+      set({ communityRoutes, communityStatus: 'ready', ...replan({ ...get(), communityRoutes }) });
+    } catch {
+      set({ communityStatus: 'error' });
+    }
+  },
+  upsertCommunityRoute: (route) => {
+    const others = get().communityRoutes.filter((r) => r.properties.id !== route.properties.id);
+    const communityRoutes = [route, ...others];
+    set({ communityRoutes, ...replan({ ...get(), communityRoutes }) });
+  },
+  confirmCommunityRoute: async (id) => {
+    const route = await confirmRoute(id);
+    get().upsertCommunityRoute(route);
+    set({ confirmedIds: [...get().confirmedIds, id] });
+  },
   setPlace: (target, place) => {
     const next = { ...get(), [target]: place };
     set({ [target]: place, ...replan(next) });
@@ -100,3 +146,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 }));
+
+/** Memoized bundled + community routes for components. */
+export function useAllRoutes(): TransitRoute[] {
+  const dataset = useAppStore((s) => s.dataset);
+  const communityRoutes = useAppStore((s) => s.communityRoutes);
+  return useMemo(() => selectAllRoutes({ dataset, communityRoutes }), [dataset, communityRoutes]);
+}

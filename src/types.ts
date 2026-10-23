@@ -23,6 +23,10 @@ export interface RouteProps {
   lastVerified: string;
   /** Tricycle fares are set per LGU; jeeps ignore this. */
   city?: string;
+  /** Absent for bundled data; 'community' for routes added by commuters. */
+  source?: 'official' | 'community';
+  status?: 'unverified' | 'verified';
+  confirmations?: number;
 }
 
 export type TransitRoute = Feature<LineString, RouteProps>;
@@ -96,9 +100,23 @@ export interface RideLeg {
   fare: number;
   path: LngLat[];
   trafficLevel: TrafficLevel;
+  /** Community route not yet confirmed by enough commuters. */
+  unverified: boolean;
 }
 
 export type Leg = WalkLeg | RideLeg;
+
+/** Body of POST /routes on the community API. */
+export interface NewCommunityRoute {
+  name: string;
+  type: VehicleType;
+  signboard: string;
+  direction: 'oneway' | 'both';
+  operatingHours: string;
+  city?: string;
+  coordinates: LngLat[];
+  loadingPoints: LoadingPoint[];
+}
 
 export interface Trip {
   id: string;

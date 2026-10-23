@@ -65,6 +65,28 @@ describe('planTrips', () => {
     expect(rides(ikot!.legs)[0].km).toBeGreaterThan(1.5);
   });
 
+  it('marks unverified community rides and prefers an equivalent official route', () => {
+    const official = routes.find((r) => r.properties.id === 'jeep-cubao-quiapo-aurora')!;
+    const community: TransitRoute = {
+      ...official,
+      properties: {
+        ...official.properties,
+        id: 'community-copy',
+        source: 'community',
+        status: 'unverified',
+        confirmations: 0,
+      },
+    };
+    const trips = planTrips(coord('cubao'), coord('quiapo'), {
+      routes: [official, community],
+      landmarks,
+      at,
+    });
+    expect(trips.map((t) => t.id)).toEqual(['jeep-cubao-quiapo-aurora', 'community-copy']);
+    expect(rides(trips[1].legs)[0].unverified).toBe(true);
+    expect(rides(trips[0].legs)[0].unverified).toBe(false);
+  });
+
   it('returns nothing when no route is within walking distance', () => {
     const cebu: LngLat = [123.8854, 10.3157];
     const lapu: LngLat = [123.9494, 10.3103];
