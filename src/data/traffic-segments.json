@@ -1,0 +1,10 @@
+[
+  { "id": "aurora-cubao-gilmore", "name": "Aurora Blvd (Cubao – Gilmore)", "coords": [[121.0527, 14.6195], [121.044, 14.6168], [121.0337, 14.6131]] },
+  { "id": "aurora-gilmore-vmapa", "name": "Aurora / Magsaysay (Gilmore – V. Mapa)", "coords": [[121.0337, 14.6131], [121.025, 14.608], [121.014, 14.6037]] },
+  { "id": "legarda", "name": "Legarda – Quiapo", "coords": [[121.014, 14.6037], [120.999, 14.6018], [120.9838, 14.5987]] },
+  { "id": "espana", "name": "España Blvd", "coords": [[121.0006, 14.6198], [120.9897, 14.6098], [120.9838, 14.5987]] },
+  { "id": "quezon-ave", "name": "Quezon Ave", "coords": [[121.0494, 14.6516], [121.0373, 14.6437], [121.017, 14.6298], [121.0006, 14.6198]] },
+  { "id": "east-ave", "name": "Kamias / East Ave", "coords": [[121.0527, 14.6195], [121.0505, 14.6285], [121.0482, 14.6438], [121.0494, 14.6516]] },
+  { "id": "commonwealth", "name": "Commonwealth Ave", "coords": [[121.0575, 14.6545], [121.07, 14.672], [121.087, 14.683], [121.095, 14.693]] },
+  { "id": "edsa-cubao", "name": "EDSA (Cubao – Quezon Ave)", "coords": [[121.0527, 14.6195], [121.0458, 14.6305], [121.0373, 14.6437]] }
+]

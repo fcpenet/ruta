@@ -1,0 +1,309 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-23",
+  "region": "NCR",
+  "attribution": "Route lines are hand-traced approximations along © OpenStreetMap contributors road data (ODbL). Replace with OSM route relations before release.",
+  "routes": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "jeep-cubao-quiapo-aurora",
+        "name": "Cubao – Quiapo via Aurora",
+        "type": "jeep",
+        "signboard": "CUBAO – QUIAPO",
+        "direction": "both",
+        "operatingHours": "4:00 AM – 11:00 PM",
+        "loadingPoints": [
+          { "name": "Cubao (Aurora cor. EDSA)", "coord": [121.0527, 14.6195] },
+          { "name": "Gilmore", "coord": [121.0337, 14.6131] },
+          { "name": "V. Mapa", "coord": [121.014, 14.6037] },
+          { "name": "Legarda", "coord": [120.993, 14.601] },
+          { "name": "Quiapo Church", "coord": [120.9838, 14.5987] }
+        ],
+        "color": "#E4572E",
+        "lastVerified": "2026-10-23"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [121.0527, 14.6195],
+          [121.0475, 14.6178],
+          [121.044, 14.6168],
+          [121.0385, 14.6148],
+          [121.0337, 14.6131],
+          [121.0285, 14.6112],
+          [121.025, 14.608],
+          [121.019, 14.6058],
+          [121.014, 14.6037],
+          [121.0065, 14.6027],
+          [120.999, 14.6018],
+          [120.993, 14.601],
+          [120.9885, 14.6],
+          [120.9838, 14.5987]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "jeep-philcoa-quiapo-quezonave",
+        "name": "Philcoa – Quiapo via Quezon Ave / España",
+        "type": "jeep",
+        "signboard": "PHILCOA – QUIAPO",
+        "direction": "both",
+        "operatingHours": "4:00 AM – 12:00 AM",
+        "loadingPoints": [
+          { "name": "Philcoa", "coord": [121.0575, 14.6545] },
+          { "name": "Quezon Memorial Circle", "coord": [121.0494, 14.6516] },
+          { "name": "Quezon Ave cor. EDSA", "coord": [121.0373, 14.6437] },
+          { "name": "Welcome Rotonda", "coord": [121.0006, 14.6198] },
+          { "name": "UST España", "coord": [120.9897, 14.6098] },
+          { "name": "Quiapo Church", "coord": [120.9838, 14.5987] }
+        ],
+        "color": "#2E86AB",
+        "lastVerified": "2026-10-23"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [121.0575, 14.6545],
+          [121.0535, 14.6532],
+          [121.0494, 14.6516],
+          [121.0435, 14.6478],
+          [121.0373, 14.6437],
+          [121.031, 14.6395],
+          [121.024, 14.6345],
+          [121.017, 14.6298],
+          [121.009, 14.6245],
+          [121.0006, 14.6198],
+          [120.9955, 14.6152],
+          [120.9897, 14.6098],
+          [120.9862, 14.6045],
+          [120.9838, 14.5987]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "jeep-cubao-philcoa-eastave",
+        "name": "Cubao – Philcoa via Kamias / East Ave",
+        "type": "jeep",
+        "signboard": "CUBAO – PHILCOA",
+        "direction": "both",
+        "operatingHours": "5:00 AM – 10:00 PM",
+        "loadingPoints": [
+          { "name": "Cubao (Aurora cor. EDSA)", "coord": [121.0527, 14.6195] },
+          { "name": "Kamias", "coord": [121.0505, 14.6285] },
+          { "name": "East Ave (NKTI)", "coord": [121.0482, 14.6438] },
+          { "name": "Quezon Memorial Circle", "coord": [121.0494, 14.6516] },
+          { "name": "Philcoa", "coord": [121.0575, 14.6545] }
+        ],
+        "color": "#6A4C93",
+        "lastVerified": "2026-10-23"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [121.0527, 14.6195],
+          [121.0515, 14.6238],
+          [121.0505, 14.6285],
+          [121.0492, 14.634],
+          [121.0485, 14.639],
+          [121.0482, 14.6438],
+          [121.0488, 14.648],
+          [121.0494, 14.6516],
+          [121.0535, 14.6532],
+          [121.0575, 14.6545]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "jeep-up-ikot",
+        "name": "UP Ikot (Diliman campus loop)",
+        "type": "jeep",
+        "signboard": "UP IKOT",
+        "direction": "oneway",
+        "operatingHours": "6:00 AM – 9:00 PM",
+        "loadingPoints": [
+          { "name": "Philcoa (UP side)", "coord": [121.0568, 14.6552] },
+          { "name": "UP Shopping Center", "coord": [121.0638, 14.6582] },
+          { "name": "Palma Hall (AS)", "coord": [121.0697, 14.6548] },
+          { "name": "UP Engineering", "coord": [121.0685, 14.6488] },
+          { "name": "CP Garcia Gate", "coord": [121.0752, 14.6505] }
+        ],
+        "color": "#7A1F2B",
+        "lastVerified": "2026-10-23"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [121.0568, 14.6552],
+          [121.0605, 14.6568],
+          [121.0638, 14.6582],
+          [121.067, 14.6572],
+          [121.0697, 14.6548],
+          [121.0752, 14.6505],
+          [121.072, 14.648],
+          [121.0685, 14.6488],
+          [121.064, 14.6508],
+          [121.06, 14.653],
+          [121.0568, 14.6552]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "mpuj-philcoa-fairview",
+        "name": "Philcoa – SM Fairview via Commonwealth",
+        "type": "modern_jeep",
+        "signboard": "PHILCOA – FAIRVIEW",
+        "direction": "both",
+        "operatingHours": "4:30 AM – 11:00 PM",
+        "loadingPoints": [
+          { "name": "Philcoa", "coord": [121.0575, 14.6545] },
+          { "name": "Tandang Sora", "coord": [121.07, 14.672] },
+          { "name": "Ever Commonwealth", "coord": [121.087, 14.683] },
+          { "name": "Batasan", "coord": [121.095, 14.693] },
+          { "name": "Regalado", "coord": [121.08, 14.72] },
+          { "name": "SM Fairview", "coord": [121.0577, 14.7344] }
+        ],
+        "color": "#1B998B",
+        "lastVerified": "2026-10-23"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [121.0575, 14.6545],
+          [121.0625, 14.6615],
+          [121.07, 14.672],
+          [121.0785, 14.678],
+          [121.087, 14.683],
+          [121.095, 14.693],
+          [121.0955, 14.705],
+          [121.088, 14.714],
+          [121.08, 14.72],
+          [121.068, 14.728],
+          [121.0577, 14.7344]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "jeep-stamesa-lawton",
+        "name": "V. Mapa – Lawton via Legarda / Recto",
+        "type": "jeep",
+        "signboard": "STA. MESA – LAWTON",
+        "direction": "both",
+        "operatingHours": "4:00 AM – 11:00 PM",
+        "loadingPoints": [
+          { "name": "V. Mapa", "coord": [121.014, 14.6037] },
+          { "name": "Legarda", "coord": [120.993, 14.601] },
+          { "name": "Recto", "coord": [120.9845, 14.6032] },
+          { "name": "Lawton", "coord": [120.981, 14.5935] }
+        ],
+        "color": "#F1A208",
+        "lastVerified": "2026-10-23"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [121.014, 14.6037],
+          [121.0065, 14.6027],
+          [120.999, 14.6018],
+          [120.993, 14.601],
+          [120.989, 14.6022],
+          [120.9845, 14.6032],
+          [120.9825, 14.5985],
+          [120.981, 14.5935]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "tric-teachers-village",
+        "name": "Teachers Village / Maginhawa tricycle",
+        "type": "tricycle",
+        "signboard": "TODA MAGINHAWA",
+        "direction": "both",
+        "operatingHours": "5:00 AM – 12:00 AM",
+        "loadingPoints": [
+          { "name": "Maginhawa cor. Mayaman", "coord": [121.0605, 14.6435] },
+          { "name": "Philcoa terminal", "coord": [121.0575, 14.6545] }
+        ],
+        "color": "#C1666B",
+        "lastVerified": "2026-10-23",
+        "city": "quezon_city"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [121.0605, 14.6435],
+          [121.0598, 14.6468],
+          [121.0592, 14.65],
+          [121.0583, 14.6525],
+          [121.0575, 14.6545]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "tric-new-manila",
+        "name": "Gilmore / New Manila tricycle",
+        "type": "tricycle",
+        "signboard": "TODA NEW MANILA",
+        "direction": "both",
+        "operatingHours": "5:00 AM – 11:00 PM",
+        "loadingPoints": [
+          { "name": "Gilmore (Aurora)", "coord": [121.0337, 14.6131] },
+          { "name": "Broadway Ave", "coord": [121.0345, 14.6205] }
+        ],
+        "color": "#48A9A6",
+        "lastVerified": "2026-10-23",
+        "city": "quezon_city"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [121.0337, 14.6131],
+          [121.0342, 14.6165],
+          [121.0345, 14.6205],
+          [121.0372, 14.6225]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "tric-sampaloc-dapitan",
+        "name": "Dapitan / Sampaloc tricycle",
+        "type": "tricycle",
+        "signboard": "TODA DAPITAN",
+        "direction": "both",
+        "operatingHours": "5:00 AM – 12:00 AM",
+        "loadingPoints": [
+          { "name": "UST España", "coord": [120.9897, 14.6098] },
+          { "name": "Dapitan Arcade", "coord": [120.9935, 14.6145] }
+        ],
+        "color": "#9BC53D",
+        "lastVerified": "2026-10-23",
+        "city": "manila"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [120.9897, 14.6098],
+          [120.9912, 14.6118],
+          [120.9935, 14.6145],
+          [120.996, 14.6162]
+        ]
+      }
+    }
+  ]
+}

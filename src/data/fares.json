@@ -1,0 +1,12 @@
+{
+  "effectiveDate": "2023-10-08",
+  "source": "Jeep: LTFRB fare matrix (Oct 2023). Tricycle: placeholder values, each LGU sets its own ordinance — verify before release.",
+  "discountRate": 0.2,
+  "jeep": { "base": 13, "baseKm": 4, "perKm": 1.8 },
+  "modern_jeep": { "base": 15, "baseKm": 4, "perKm": 2.2 },
+  "tricycle": {
+    "quezon_city": { "base": 15, "baseKm": 1, "perKm": 5, "special": 50 },
+    "manila": { "base": 15, "baseKm": 1, "perKm": 5, "special": 50 },
+    "default": { "base": 15, "baseKm": 1, "perKm": 5, "special": 50 }
+  }
+}

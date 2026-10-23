@@ -1,0 +1,18 @@
+[
+  { "id": "cubao", "name": "Cubao (Gateway / Araneta)", "aliases": ["araneta", "gateway", "farmers"], "coord": [121.0532, 14.6205] },
+  { "id": "quiapo", "name": "Quiapo Church", "aliases": ["quiapo", "plaza miranda"], "coord": [120.9838, 14.5987] },
+  { "id": "ust", "name": "UST (España)", "aliases": ["ust", "santo tomas", "espana"], "coord": [120.9892, 14.6092] },
+  { "id": "philcoa", "name": "Philcoa", "aliases": ["philcoa"], "coord": [121.0575, 14.6545] },
+  { "id": "up-as", "name": "UP Diliman – Palma Hall", "aliases": ["up", "diliman", "palma hall", "as"], "coord": [121.0697, 14.6552] },
+  { "id": "up-engg", "name": "UP College of Engineering", "aliases": ["melchor", "engineering"], "coord": [121.0688, 14.6482] },
+  { "id": "qc-circle", "name": "Quezon Memorial Circle", "aliases": ["qc circle", "circle"], "coord": [121.0494, 14.6516] },
+  { "id": "gilmore", "name": "Gilmore", "aliases": ["gilmore"], "coord": [121.0337, 14.6131] },
+  { "id": "vmapa", "name": "V. Mapa (Sta. Mesa)", "aliases": ["sta mesa", "pup", "v mapa"], "coord": [121.0142, 14.6033] },
+  { "id": "legarda", "name": "Legarda", "aliases": ["legarda"], "coord": [120.993, 14.6012] },
+  { "id": "lawton", "name": "Lawton / Liwasang Bonifacio", "aliases": ["lawton", "post office"], "coord": [120.981, 14.5935] },
+  { "id": "maginhawa", "name": "Maginhawa St (Teachers Village)", "aliases": ["maginhawa", "teachers village"], "coord": [121.0605, 14.6432] },
+  { "id": "sm-fairview", "name": "SM Fairview", "aliases": ["fairview"], "coord": [121.0577, 14.7344] },
+  { "id": "batasan", "name": "Batasan Pambansa", "aliases": ["batasan"], "coord": [121.0965, 14.6925] },
+  { "id": "welcome-rotonda", "name": "Welcome Rotonda", "aliases": ["rotonda", "welcome"], "coord": [121.0006, 14.6198] },
+  { "id": "dapitan", "name": "Dapitan Arcade", "aliases": ["dapitan"], "coord": [120.9935, 14.6148] }
+]
