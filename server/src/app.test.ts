@@ -233,6 +233,36 @@ for (const [name, makeStore] of stores) {
       assert.equal((await api.post(`/routes/${randomUUID()}/report`, { reason: 'spam' }, author)).status, 404);
     });
 
+    it('accepts walk links without a signboard and keeps them short and two-way', async () => {
+      const api = client(t.store);
+      const token = await api.user();
+      const link = {
+        name: 'Footbridge sa Aurora',
+        type: 'walk',
+        direction: 'both',
+        coordinates: [
+          [121.0527, 14.6195],
+          [121.0531, 14.6201],
+        ],
+      };
+      const res = await api.post('/routes', link, token);
+      assert.equal(res.status, 201);
+      const { route: created } = await res.json();
+      assert.equal(created.properties.type, 'walk');
+      assert.equal(created.properties.signboard, '');
+
+      assert.equal((await api.post('/routes', { ...link, direction: 'oneway' }, token)).status, 400);
+      const long = await api.post(
+        '/routes',
+        { ...link, coordinates: [[121.0, 14.6], [121.015, 14.6], [121.03, 14.6]] },
+        token
+      );
+      assert.equal(long.status, 400);
+      assert.match((await long.json()).issues[0].message, /longer than 2 km/);
+      // Vehicles still need a signboard.
+      assert.equal((await api.post('/routes', { ...route, signboard: undefined }, token)).status, 400);
+    });
+
     it('404s when confirming an unknown route', async () => {
       const api = client(t.store);
       const res = await api.post(`/routes/${randomUUID()}/confirm`, {}, await api.user());

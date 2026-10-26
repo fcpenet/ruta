@@ -4,6 +4,9 @@ export type LngLat = [number, number];
 
 export type VehicleType = 'jeep' | 'modern_jeep' | 'tricycle';
 
+/** 'walk' is a commuter-drawn walk link (footbridge, alley, mall walkway) that joins routes. */
+export type RouteType = VehicleType | 'walk';
+
 export type DiscountType = 'regular' | 'student' | 'senior' | 'pwd';
 
 export interface LoadingPoint {
@@ -14,7 +17,8 @@ export interface LoadingPoint {
 export interface RouteProps {
   id: string;
   name: string;
-  type: VehicleType;
+  type: RouteType;
+  /** Empty for walk links. */
   signboard: string;
   direction: 'oneway' | 'both';
   operatingHours: string;
@@ -88,6 +92,8 @@ export interface WalkLeg {
   meters: number;
   minutes: number;
   toName: string;
+  /** Set when walking along a commuter-drawn walk link; otherwise a straight-line estimate. */
+  link?: { id: string; name: string; path: LngLat[]; unverified: boolean };
 }
 
 export interface RideLeg {
@@ -115,7 +121,7 @@ export type Leg = WalkLeg | RideLeg;
 /** Body of POST /routes on the community API. */
 export interface NewCommunityRoute {
   name: string;
-  type: VehicleType;
+  type: RouteType;
   signboard: string;
   direction: 'oneway' | 'both';
   operatingHours: string;

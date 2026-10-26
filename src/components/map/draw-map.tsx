@@ -28,6 +28,7 @@ export function DrawMap({ points, onAddPoint }: DrawMapProps) {
       <Camera initialViewState={{ center: points[0] ?? DEFAULT_CENTER, zoom: 14 }} />
       <GeoJSONSource id="reference" data={reference}>
         <Layer id="reference-line" type="line" {...native(LAYER_STYLES.routes)} />
+        <Layer id="reference-walk-line" type="line" {...native(LAYER_STYLES.walkLinks)} />
       </GeoJSONSource>
       <GeoJSONSource id="draft" data={draft}>
         <Layer id="draft-line" type="line" {...native(DRAFT_STYLES.line)} />

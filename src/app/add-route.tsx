@@ -22,15 +22,18 @@ import { fareTable } from '@/lib/fare';
 import { distanceM, lengthKm } from '@/lib/geo';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
-import type { LngLat, VehicleType } from '@/types';
+import type { LngLat, RouteType } from '@/types';
 
 const MAX_GAP_M = 5000;
+/** Matches MAX_WALK_KM on the server. */
+const MAX_WALK_KM = 2;
 const WIDE_BREAKPOINT = 900;
 
-const TYPES: { value: VehicleType; label: string }[] = [
+const TYPES: { value: RouteType; label: string }[] = [
   { value: 'jeep', label: 'Jeep' },
   { value: 'modern_jeep', label: 'Modern jeep' },
   { value: 'tricycle', label: 'Tricycle' },
+  { value: 'walk', label: 'Lakad (walk link)' },
 ];
 
 const DIRECTIONS = [
@@ -54,7 +57,7 @@ export default function AddRouteScreen() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [via, setVia] = useState('');
-  const [type, setType] = useState<VehicleType>('jeep');
+  const [type, setType] = useState<RouteType>('jeep');
   const [direction, setDirection] = useState<'both' | 'oneway'>('both');
   const [hours, setHours] = useState('');
   const [city, setCity] = useState<string | undefined>(undefined);
@@ -88,15 +91,17 @@ export default function AddRouteScreen() {
     );
   }
 
+  const walk = type === 'walk';
   const km = lengthKm(points);
   const bigGap = points.some((p, i) => i > 0 && distanceM(points[i - 1], p) > MAX_GAP_M);
+  const tooLong = walk && km > MAX_WALK_KM;
   const missing = [
     points.length < 2 && 'at least 2 points on the map',
-    !signboard.trim() && 'the signboard',
+    !walk && !signboard.trim() && 'the signboard',
     !from.trim() && 'where it starts',
     !to.trim() && 'where it ends',
   ].filter(Boolean) as string[];
-  const canSubmit = missing.length === 0 && !bigGap && !submitting;
+  const canSubmit = missing.length === 0 && !bigGap && !tooLong && !submitting;
 
   const submit = async () => {
     setSubmitting(true);
@@ -106,9 +111,9 @@ export default function AddRouteScreen() {
       const created = await submitRoute({
         name,
         type,
-        signboard: signboard.trim().toUpperCase(),
-        direction,
-        operatingHours: hours.trim(),
+        signboard: walk ? '' : signboard.trim().toUpperCase(),
+        direction: walk ? 'both' : direction,
+        operatingHours: walk ? '' : hours.trim(),
         city: type === 'tricycle' ? city : undefined,
         coordinates: points,
         loadingPoints: [
@@ -177,24 +182,38 @@ export default function AddRouteScreen() {
       contentContainerStyle={styles.formContent}
       keyboardShouldPersistTaps="handled">
       <ThemedText type="small" themeColor="textSecondary">
-        {wide ? 'Click' : 'Tap'} the map along the road the jeep or tricycle takes, from one terminal
-        to the other. Add a point at every turn so the line follows the street.
+        {walk
+          ? `${wide ? 'Click' : 'Tap'} the map along the path you walk — a footbridge, alley, mall walkway or shortcut between two routes. Start and end close to the jeep lines it connects.`
+          : `${wide ? 'Click' : 'Tap'} the map along the road the jeep or tricycle takes, from one terminal to the other. Add a point at every turn so the line follows the street.`}
       </ThemedText>
       {bigGap && (
         <ThemedText type="small" style={styles.error}>
           Two points are more than 5 km apart. Add points in between along the road.
         </ThemedText>
       )}
+      {tooLong && (
+        <ThemedText type="small" style={styles.error}>
+          Walk links can be up to {MAX_WALK_KM} km. Split a longer walk, or add it as a jeep or
+          tricycle route.
+        </ThemedText>
+      )}
 
-      {field('Karatula (signboard)', signboard, setSignboard, 'e.g. CUBAO – QUIAPO', 'characters')}
+      <ThemedText type="smallBold">Uri</ThemedText>
+      <Segmented options={TYPES} value={type} onChange={setType} />
+
+      {!walk &&
+        field('Karatula (signboard)', signboard, setSignboard, 'e.g. CUBAO – QUIAPO', 'characters')}
       <View style={styles.row}>
         <View style={styles.flex}>{field('Mula (start)', from, setFrom, 'e.g. Cubao')}</View>
         <View style={styles.flex}>{field('Hanggang (end)', to, setTo, 'e.g. Quiapo')}</View>
       </View>
-      {field('Via (optional)', via, setVia, 'e.g. Aurora Blvd')}
+      {field(
+        walk ? 'Daan (optional)' : 'Via (optional)',
+        via,
+        setVia,
+        walk ? 'e.g. footbridge, SM Cubao walkway' : 'e.g. Aurora Blvd'
+      )}
 
-      <ThemedText type="smallBold">Sasakyan</ThemedText>
-      <Segmented options={TYPES} value={type} onChange={setType} />
       {type === 'tricycle' && (
         <>
           <ThemedText type="smallBold">City (for fares)</ThemedText>
@@ -209,15 +228,19 @@ export default function AddRouteScreen() {
         </>
       )}
 
-      <ThemedText type="smallBold">Direction</ThemedText>
-      <Segmented options={DIRECTIONS} value={direction} onChange={setDirection} />
-      {direction === 'oneway' && (
-        <ThemedText type="small" themeColor="textSecondary">
-          Draw the points in the direction the vehicle travels.
-        </ThemedText>
-      )}
+      {!walk && (
+        <>
+          <ThemedText type="smallBold">Direction</ThemedText>
+          <Segmented options={DIRECTIONS} value={direction} onChange={setDirection} />
+          {direction === 'oneway' && (
+            <ThemedText type="small" themeColor="textSecondary">
+              Draw the points in the direction the vehicle travels.
+            </ThemedText>
+          )}
 
-      {field('Oras ng biyahe (optional)', hours, setHours, 'e.g. 5:00 AM – 10:00 PM', 'none')}
+          {field('Oras ng biyahe (optional)', hours, setHours, 'e.g. 5:00 AM – 10:00 PM', 'none')}
+        </>
+      )}
 
       {error && (
         <ThemedText type="small" style={styles.error}>
@@ -239,7 +262,7 @@ export default function AddRouteScreen() {
           <ActivityIndicator color={theme.accentText} />
         ) : (
           <ThemedText type="smallBold" style={{ color: theme.accentText }}>
-            I-submit ang ruta
+            {walk ? 'I-submit ang lakaran' : 'I-submit ang ruta'}
           </ThemedText>
         )}
       </Pressable>

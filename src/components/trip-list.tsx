@@ -51,8 +51,8 @@ export function TripList() {
       <View style={styles.empty}>
         <ThemedText type="smallBold">Walang nakitang ruta.</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          No route in our data passes within walking distance of both points with at most one
-          transfer. Try a nearby landmark, or check the Routes tab for what’s covered so far.
+          No route or walk link in our data connects these points yet. Try a nearby landmark, or
+          add the jeep or walk you know in the Routes tab.
         </ThemedText>
       </View>
     );
@@ -133,8 +133,20 @@ function Step({ leg }: { leg: Leg }) {
         <ThemedText style={styles.stepIcon}>🚶</ThemedText>
         <View style={styles.stepBody}>
           <ThemedText type="small">
-            Maglakad {meters(leg.meters)} papunta sa {leg.toName}
+            Maglakad {meters(leg.meters)}
+            {leg.link ? (
+              <>
+                {' '}
+                via <ThemedText type="smallBold">{leg.link.name}</ThemedText>
+              </>
+            ) : null}{' '}
+            papunta sa {leg.toName}
           </ThemedText>
+          {leg.link?.unverified && (
+            <ThemedText type="small" style={styles.unverified}>
+              ⚠ Walk added by a commuter, not yet confirmed.
+            </ThemedText>
+          )}
           <ThemedText type="small" themeColor="textSecondary">
             ~{minutes(leg.minutes)}
           </ThemedText>

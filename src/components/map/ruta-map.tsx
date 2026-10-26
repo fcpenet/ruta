@@ -38,6 +38,7 @@ export function RutaMap({ onPick }: RutaMapProps) {
       </GeoJSONSource>
       <GeoJSONSource id="routes" data={routes}>
         <Layer id="routes-line" type="line" {...native(LAYER_STYLES.routes)} />
+        <Layer id="walk-links-line" type="line" {...native(LAYER_STYLES.walkLinks)} />
       </GeoJSONSource>
       <GeoJSONSource id="trip" data={trip}>
         <Layer id="trip-casing" type="line" {...native(LAYER_STYLES.tripCasing)} />

@@ -28,6 +28,7 @@ export function DrawMap({ points, onAddPoint }: DrawMapProps) {
       <NavigationControl position="top-right" showCompass={false} />
       <Source id="reference" type="geojson" data={reference}>
         <Layer id="reference-line" type="line" {...LAYER_STYLES.routes} />
+        <Layer id="reference-walk-line" type="line" {...LAYER_STYLES.walkLinks} />
       </Source>
       <Source id="draft" type="geojson" data={draft}>
         <Layer id="draft-line" type="line" {...DRAFT_STYLES.line} />

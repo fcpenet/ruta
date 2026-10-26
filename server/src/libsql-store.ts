@@ -5,6 +5,21 @@ import { createClient, type Client, type Row } from '@libsql/client';
 import type { NewRoute, ReportReason } from './schema.ts';
 import type { NewStoredRoute, RouteStore, StoredRoute, User, VoteResult } from './store.ts';
 
+const communityRoutesTable = (name: string) => `create table if not exists ${name} (
+  id text primary key,
+  name text not null,
+  type text not null check (type in ('jeep', 'modern_jeep', 'tricycle', 'walk')),
+  signboard text not null,
+  direction text not null check (direction in ('both', 'oneway')),
+  operating_hours text not null default '',
+  city text,
+  color text not null,
+  coordinates text not null,
+  loading_points text not null default '[]',
+  author_id text not null references users (id),
+  created_at text not null
+);`;
+
 const MIGRATION = `
 create table if not exists users (
   id text primary key,
@@ -19,20 +34,7 @@ create table if not exists sessions (
   expires_at text not null
 );
 
-create table if not exists community_routes (
-  id text primary key,
-  name text not null,
-  type text not null check (type in ('jeep', 'modern_jeep', 'tricycle')),
-  signboard text not null,
-  direction text not null check (direction in ('both', 'oneway')),
-  operating_hours text not null default '',
-  city text,
-  color text not null,
-  coordinates text not null,
-  loading_points text not null default '[]',
-  author_id text not null references users (id),
-  created_at text not null
-);
+${communityRoutesTable('community_routes')}
 
 create table if not exists route_confirmations (
   route_id text not null references community_routes (id) on delete cascade,
@@ -98,6 +100,26 @@ export class LibsqlStore implements RouteStore {
 
   async migrate() {
     await this.db.executeMultiple(MIGRATION);
+    await this.allowWalkLinks();
+  }
+
+  /**
+   * Databases created before walk links have a CHECK constraint without 'walk'. SQLite can't
+   * alter constraints, so rebuild the table (rows kept; foreign keys off during the swap).
+   */
+  private async allowWalkLinks() {
+    const { rows } = await this.db.execute(
+      "select sql from sqlite_master where type = 'table' and name = 'community_routes'"
+    );
+    if (String(rows[0]?.sql ?? '').includes("'walk'")) return;
+    await this.db.migrate([
+      'drop table if exists community_routes_v2',
+      communityRoutesTable('community_routes_v2'),
+      'insert into community_routes_v2 select * from community_routes',
+      'drop table community_routes',
+      'alter table community_routes_v2 rename to community_routes',
+      'create index if not exists community_routes_created_at on community_routes (created_at)',
+    ]);
   }
 
   /** Test helper: empties all tables. */

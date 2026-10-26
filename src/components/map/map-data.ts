@@ -91,7 +91,7 @@ export function useMapData(): MapData {
           : {
               type: 'Feature',
               properties: { kind: 'walk', color: '#57606A' },
-              geometry: { type: 'LineString', coordinates: [leg.from, leg.to] },
+              geometry: { type: 'LineString', coordinates: leg.link?.path ?? [leg.from, leg.to] },
             }
       );
     }
@@ -149,6 +149,7 @@ type CircleStyle = Pick<CircleLayerSpecification, 'paint'>;
 export const LAYER_STYLES: {
   traffic: LineStyle;
   routes: LineStyle;
+  walkLinks: LineStyle;
   tripCasing: LineStyle;
   tripRide: LineStyle;
   tripWalk: LineStyle;
@@ -159,11 +160,23 @@ export const LAYER_STYLES: {
     paint: { 'line-color': ['get', 'color'], 'line-width': 9, 'line-opacity': 0.35 },
   },
   routes: {
+    filter: ['!=', ['get', 'type'], 'walk'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       'line-color': ['get', 'color'],
       'line-width': ['case', ['get', 'highlighted'], 7, 4],
       'line-opacity': ['case', ['get', 'dimmed'], 0.25, 0.9],
+    },
+  },
+  /** Commuter-drawn walk links: dashed grey, like the trip's walking legs. */
+  walkLinks: {
+    filter: ['==', ['get', 'type'], 'walk'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': '#57606A',
+      'line-width': ['case', ['get', 'highlighted'], 5, 3],
+      'line-opacity': ['case', ['get', 'dimmed'], 0.3, 0.9],
+      'line-dasharray': [1, 1.5],
     },
   },
   tripCasing: {

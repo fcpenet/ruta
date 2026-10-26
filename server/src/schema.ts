@@ -4,6 +4,10 @@ import { z } from 'zod';
 const PH_BOUNDS = { west: 116, south: 4.5, east: 127, north: 21.5 };
 const MAX_SEGMENT_KM = 5;
 const MAX_ROUTE_KM = 80;
+/** Walk links are short connectors (footbridges, alleys, mall walkways), not whole trips. */
+export const MAX_WALK_KM = 2;
+
+export const ROUTE_TYPES = ['jeep', 'modern_jeep', 'tricycle', 'walk'] as const;
 
 const lngLat = z
   .tuple([z.number(), z.number()])
@@ -18,8 +22,9 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 export const newRouteSchema = z
   .object({
     name: text(80),
-    type: z.enum(['jeep', 'modern_jeep', 'tricycle']),
-    signboard: text(60),
+    type: z.enum(ROUTE_TYPES),
+    /** Required for vehicles; walk links have none. */
+    signboard: z.string().trim().max(60).default(''),
     direction: z.enum(['both', 'oneway']),
     operatingHours: z.string().trim().max(60).default(''),
     city: z.string().trim().max(40).optional(),
@@ -27,6 +32,13 @@ export const newRouteSchema = z
     loadingPoints: z.array(z.object({ name: text(60), coord: lngLat })).max(30).default([]),
   })
   .superRefine((r, ctx) => {
+    const walk = r.type === 'walk';
+    if (!walk && !r.signboard) {
+      ctx.addIssue({ code: 'custom', path: ['signboard'], message: 'Signboard is required' });
+    }
+    if (walk && r.direction !== 'both') {
+      ctx.addIssue({ code: 'custom', path: ['direction'], message: 'Walk links go both ways' });
+    }
     let total = 0;
     for (let i = 1; i < r.coordinates.length; i++) {
       const seg = haversineKm(r.coordinates[i - 1], r.coordinates[i]);
@@ -40,8 +52,13 @@ export const newRouteSchema = z
       }
       total += seg;
     }
-    if (total > MAX_ROUTE_KM) {
-      ctx.addIssue({ code: 'custom', path: ['coordinates'], message: `Route is longer than ${MAX_ROUTE_KM} km` });
+    const max = walk ? MAX_WALK_KM : MAX_ROUTE_KM;
+    if (total > max) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['coordinates'],
+        message: walk ? `Walk link is longer than ${max} km` : `Route is longer than ${max} km`,
+      });
     }
   });
 

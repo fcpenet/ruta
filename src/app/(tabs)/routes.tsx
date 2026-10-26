@@ -11,22 +11,24 @@ import { ApiError } from '@/lib/api';
 import { lengthKm } from '@/lib/geo';
 import { useAllRoutes, useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
-import type { LngLat, ReportReason, TransitRoute, VehicleType } from '@/types';
+import type { LngLat, ReportReason, RouteType, TransitRoute } from '@/types';
 
-type Filter = 'all' | 'community' | VehicleType;
+type Filter = 'all' | 'community' | RouteType;
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'Lahat' },
   { value: 'jeep', label: 'Jeep' },
   { value: 'modern_jeep', label: 'Modern jeep' },
   { value: 'tricycle', label: 'Tricycle' },
+  { value: 'walk', label: 'Lakad' },
   { value: 'community', label: 'Community' },
 ];
 
-const TYPE_LABEL: Record<VehicleType, string> = {
+const TYPE_LABEL: Record<RouteType, string> = {
   jeep: 'Jeep',
   modern_jeep: 'Modern jeep',
   tricycle: 'Tricycle',
+  walk: 'Lakad (walk link)',
 };
 
 export default function RoutesScreen() {
@@ -166,14 +168,14 @@ function RouteCard({ route, onPress }: { route: TransitRoute; onPress: () => voi
         </ThemedText>
       </View>
       {community && <CommunityBadge route={route} />}
-      <ThemedText type="small">Karatula: “{p.signboard}”</ThemedText>
+      {p.signboard ? <ThemedText type="small">Karatula: “{p.signboard}”</ThemedText> : null}
       <ThemedText type="small" themeColor="textSecondary">
         {p.loadingPoints.map((l) => l.name).join(' → ')}
       </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {[
           `${km.toFixed(1)} km`,
-          p.direction === 'oneway' ? 'one way' : 'both ways',
+          p.type === 'walk' ? null : p.direction === 'oneway' ? 'one way' : 'both ways',
           p.operatingHours,
           community
             ? `added ${p.lastVerified}${p.author ? ` by @${p.author}` : ''}`

@@ -2,7 +2,7 @@ import { lineIntersect } from '@turf/line-intersect';
 import { lineString } from '@turf/helpers';
 
 import { computeFare } from '@/lib/fare';
-import { distanceM, isClosedLoop, lengthKm, sliceAlong, snapToLine, type Snap } from '@/lib/geo';
+import { distanceM, isClosedLoop, lengthKm, sliceAlong, snapToLine } from '@/lib/geo';
 import { pathTraffic } from '@/lib/traffic';
 import type {
   DiscountType,
@@ -38,10 +38,27 @@ const MIN_RIDE_KM = 0.3;
 /** Walking the whole way is offered when it's shorter than this. */
 const WALK_ONLY_MAX_M = 1200;
 
-interface Candidate {
+/** Most vehicles in one trip (so at most two transfers), and most segments including walk links. */
+const MAX_RIDES = 3;
+const MAX_SEGMENTS = 5;
+/** Bounds the search on dense networks; plenty for Metro Manila-sized data. */
+const MAX_EXPANSIONS = 5000;
+
+/** A route or walk link the planner can travel along. */
+interface Segment {
   route: TransitRoute;
   coords: LngLat[];
-  snap: Snap;
+  walk: boolean;
+  bbox: [number, number, number, number];
+}
+
+/** A place to switch from one segment to another, as along-distances on each. */
+interface Transfer {
+  to: number;
+  fromKm: number;
+  toKm: number;
+  fromPoint: LngLat;
+  toPoint: LngLat;
 }
 
 interface Ride {
@@ -49,10 +66,21 @@ interface Ride {
   km: number;
 }
 
+/** A partial trip: standing on `seg` at `alongKm`, having travelled `legs`. */
+interface Label {
+  seg: number;
+  alongKm: number;
+  legs: Leg[];
+  cost: number;
+  rides: number;
+  used: number[];
+}
+
 /**
- * Plans trips from `origin` to `destination` using at most one transfer.
- * Jeepneys and tricycles stop anywhere along their line, so boarding and
- * alighting points are the nearest points on the route line, not fixed stops.
+ * Plans trips from `origin` to `destination`. Trips chain up to three vehicles and any
+ * walk links commuters have drawn between them (footbridges, alleys, mall walkways).
+ * Jeepneys and tricycles stop anywhere along their line, so boarding and alighting
+ * points are the nearest points on the route line, not fixed stops.
  */
 export function planTrips(origin: LngLat, destination: LngLat, opts: PlanOptions): Trip[] {
   const {
@@ -65,73 +93,159 @@ export function planTrips(origin: LngLat, destination: LngLat, opts: PlanOptions
     maxResults = 5,
   } = opts;
 
-  const near = (pt: LngLat): Map<string, Candidate> => {
-    const out = new Map<string, Candidate>();
-    for (const route of routes) {
-      // Commuters reported it as wrong or no longer running.
-      if (route.properties.status === 'disputed') continue;
+  // Commuters reported disputed routes as wrong or no longer running.
+  const segments: Segment[] = routes
+    .filter((r) => r.properties.status !== 'disputed')
+    .map((route) => {
       const coords = route.geometry.coordinates as LngLat[];
-      const snap = snapToLine(coords, pt);
-      if (snap.offsetM <= walkRadiusM) out.set(route.properties.id, { route, coords, snap });
-    }
-    return out;
-  };
-
-  const fromCands = near(origin);
-  const toCands = near(destination);
+      return { route, coords, walk: route.properties.type === 'walk', bbox: bboxOf(coords) };
+    });
+  const transfers = transferIndex(segments, transferRadiusM);
   const ctx: LegContext = { landmarks, discount, at };
+
+  const near = (pt: LngLat) =>
+    segments.flatMap((s, i) => {
+      const snap = snapToLine(s.coords, pt);
+      return snap.offsetM <= walkRadiusM ? [{ seg: i, snap }] : [];
+    });
+  const toSnaps = new Map(near(destination).map((c) => [c.seg, c.snap]));
+
+  // Best-first search over (segment, position) states, cheapest partial trip first.
+  const queue: Label[] = near(origin).map(({ seg, snap }) => {
+    const walk = walkLeg(origin, snap.point, ctx, segments[seg].route);
+    return { seg, alongKm: snap.alongKm, legs: [walk], cost: walk.minutes, rides: 0, used: [seg] };
+  });
+  const best = new Map<string, number>();
   const trips: Trip[] = [];
 
-  // Direct trips: one route serves both ends.
-  const directIds = new Set<string>();
-  for (const [id, from] of fromCands) {
-    const to = toCands.get(id);
-    if (!to) continue;
-    const ride = rideBetween(from.route, from.coords, from.snap.alongKm, to.snap.alongKm);
-    if (!ride || ride.km < MIN_RIDE_KM) continue;
-    directIds.add(id);
-    trips.push(
-      assemble([
-        walkLeg(origin, from.snap.point, ctx, from.route),
-        rideLeg(from.route, ride, ctx),
-        walkLeg(to.snap.point, destination, ctx),
-      ])
-    );
-  }
+  for (let n = 0; queue.length && n < MAX_EXPANSIONS && trips.length < maxResults * 4; n++) {
+    queue.sort((x, y) => x.cost - y.cost);
+    const label = queue.shift()!;
+    const key = `${label.seg}:${Math.round(label.alongKm * 20)}`;
+    if ((best.get(key) ?? Infinity) <= label.cost) continue;
+    best.set(key, label.cost);
 
-  // One-transfer trips: route A from the origin, route B to the destination.
-  for (const [idA, a] of fromCands) {
-    for (const [idB, b] of toCands) {
-      // Transferring never beats staying on a route that already goes all the way.
-      if (idA === idB || directIds.has(idA) || directIds.has(idB)) continue;
-      let best: Trip | null = null;
-      for (const t of transferPoints(a.coords, b.coords, transferRadiusM)) {
-        const onA = snapToLine(a.coords, t);
-        const onB = snapToLine(b.coords, t);
-        const rideA = rideBetween(a.route, a.coords, a.snap.alongKm, onA.alongKm);
-        const rideB = rideBetween(b.route, b.coords, onB.alongKm, b.snap.alongKm);
-        if (!rideA || !rideB || rideA.km < MIN_RIDE_KM || rideB.km < MIN_RIDE_KM) continue;
-        const trip = assemble([
-          walkLeg(origin, a.snap.point, ctx, a.route),
-          rideLeg(a.route, rideA, ctx),
-          walkLeg(onA.point, onB.point, ctx, b.route),
-          rideLeg(b.route, rideB, ctx),
-          walkLeg(b.snap.point, destination, ctx),
-        ]);
-        if (!best || score(trip) < score(best)) best = trip;
-      }
-      if (best) trips.push(best);
+    const seg = segments[label.seg];
+    const along = (toKm: number) => {
+      const ride = rideBetween(seg.route, seg.coords, label.alongKm, toKm);
+      return ride && (seg.walk || ride.km >= MIN_RIDE_KM) ? ride : null;
+    };
+    const travel = (ride: Ride) =>
+      seg.walk ? linkLeg(seg.route, ride, ctx) : rideLeg(seg.route, ride, ctx);
+
+    // Finish: this segment passes near the destination.
+    const end = toSnaps.get(label.seg);
+    const finish = end && along(end.alongKm);
+    if (end && finish) {
+      trips.push(assemble([...label.legs, travel(finish), walkLeg(end.point, destination, ctx)]));
+    }
+
+    // Continue: get off here and switch to another segment.
+    if (label.used.length >= MAX_SEGMENTS) continue;
+    for (const t of transfers[label.seg]) {
+      const next = segments[t.to];
+      if (label.used.includes(t.to)) continue;
+      if (!next.walk && label.rides >= MAX_RIDES) continue;
+      const ride = along(t.fromKm);
+      if (!ride) continue;
+      const legs = [...label.legs, travel(ride), walkLeg(t.fromPoint, t.toPoint, ctx, next.route)];
+      const penalty = !next.walk && label.rides + (seg.walk ? 0 : 1) >= 1 ? TRANSFER_PENALTY_MIN : 0;
+      queue.push({
+        seg: t.to,
+        alongKm: t.toKm,
+        legs,
+        cost: label.cost + legs[legs.length - 2].minutes + legs[legs.length - 1].minutes + penalty
+          + (isUnverified(legs[legs.length - 2]) ? UNVERIFIED_PENALTY_MIN : 0),
+        rides: label.rides + (seg.walk ? 0 : 1),
+        used: [...label.used, t.to],
+      });
     }
   }
+
+  // Transferring never beats staying on a vehicle that already goes all the way.
+  const directIds = new Set(
+    trips.filter((t) => t.transfers === 0 && rideIds(t).length === 1).map((t) => rideIds(t)[0])
+  );
+  const sensible = trips.filter(
+    (t) => rideIds(t).length < 2 || !rideIds(t).some((id) => directIds.has(id))
+  );
 
   const direct = distanceM(origin, destination);
   if (direct <= WALK_ONLY_MAX_M) {
-    trips.push(assemble([walkLeg(origin, destination, ctx)]));
+    sensible.push(assemble([walkLeg(origin, destination, ctx)]));
   }
 
-  return dedupe(trips)
+  return dedupe(sensible)
     .sort((x, y) => score(x) - score(y) || x.totalFare - y.totalFare)
     .slice(0, maxResults);
+}
+
+const rideIds = (t: Trip) => t.legs.flatMap((l) => (l.kind === 'ride' ? [l.routeId] : []));
+
+const isUnverified = (l: Leg) => (l.kind === 'ride' ? l.unverified : !!l.link?.unverified);
+
+let transferCache: { key: string; index: Transfer[][] } | null = null;
+
+/**
+ * For each segment, the places to switch to every other segment. Cached because the
+ * planner reruns on every traffic tick while routes rarely change.
+ */
+function transferIndex(segments: Segment[], radiusM: number): Transfer[][] {
+  const key = `${radiusM}|${segments.map((s) => `${s.route.properties.id}:${s.coords.length}`).join('|')}`;
+  if (transferCache?.key === key) return transferCache.index;
+
+  const pad = radiusM / 111_000;
+  const index: Transfer[][] = segments.map(() => []);
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < segments.length; j++) {
+      const a = segments[i];
+      const b = segments[j];
+      if (
+        a.bbox[0] - pad > b.bbox[2] ||
+        b.bbox[0] - pad > a.bbox[2] ||
+        a.bbox[1] - pad > b.bbox[3] ||
+        b.bbox[1] - pad > a.bbox[3]
+      ) {
+        continue;
+      }
+      // One transfer per ~100 m stretch of A, keeping the shortest walk in each.
+      const byStretch = new Map<number, Transfer & { gap: number }>();
+      for (const pt of transferPoints(a.coords, b.coords, radiusM)) {
+        const onA = snapToLine(a.coords, pt);
+        const onB = snapToLine(b.coords, pt);
+        const gap = distanceM(onA.point, onB.point);
+        const stretch = Math.round(onA.alongKm * 10);
+        const prev = byStretch.get(stretch);
+        if (!prev || gap < prev.gap) {
+          byStretch.set(stretch, {
+            to: j,
+            fromKm: onA.alongKm,
+            toKm: onB.alongKm,
+            fromPoint: onA.point,
+            toPoint: onB.point,
+            gap,
+          });
+        }
+      }
+      for (const t of byStretch.values()) {
+        index[i].push({ to: j, fromKm: t.fromKm, toKm: t.toKm, fromPoint: t.fromPoint, toPoint: t.toPoint });
+        index[j].push({ to: i, fromKm: t.toKm, toKm: t.fromKm, fromPoint: t.toPoint, toPoint: t.fromPoint });
+      }
+    }
+  }
+  transferCache = { key, index };
+  return index;
+}
+
+function bboxOf(coords: LngLat[]): [number, number, number, number] {
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of coords) {
+    w = Math.min(w, x);
+    s = Math.min(s, y);
+    e = Math.max(e, x);
+    n = Math.max(n, y);
+  }
+  return [w, s, e, n];
 }
 
 /** Ride along `route` between two along-distances, honouring one-way direction and loops. */
@@ -185,8 +299,31 @@ function walkLeg(from: LngLat, to: LngLat, ctx: LegContext, toward?: TransitRout
   };
 }
 
+/** Walking along a commuter-drawn walk link: real path, no detour factor, no fare. */
+function linkLeg(route: TransitRoute, ride: Ride, ctx: LegContext): WalkLeg {
+  const p = route.properties;
+  const to = ride.path[ride.path.length - 1];
+  const meters = ride.km * 1000;
+  return {
+    kind: 'walk',
+    from: ride.path[0],
+    to,
+    meters,
+    minutes: meters / WALK_M_PER_MIN,
+    toName: placeName(to, ctx.landmarks, route),
+    link: {
+      id: p.id,
+      name: p.name,
+      path: ride.path,
+      unverified: p.source === 'community' && p.status !== 'verified',
+    },
+  };
+}
+
 function rideLeg(route: TransitRoute, ride: Ride, ctx: LegContext): RideLeg {
   const p = route.properties;
+  // Only called for vehicle segments; walk links go through linkLeg.
+  const vehicle = p.type as VehicleType;
   const board = ride.path[0];
   const alight = ride.path[ride.path.length - 1];
   const traffic = pathTraffic(ride.path, ctx.at);
@@ -194,7 +331,7 @@ function rideLeg(route: TransitRoute, ride: Ride, ctx: LegContext): RideLeg {
     kind: 'ride',
     routeId: p.id,
     routeName: p.name,
-    vehicle: p.type,
+    vehicle,
     signboard: p.signboard,
     color: p.color,
     board,
@@ -202,8 +339,8 @@ function rideLeg(route: TransitRoute, ride: Ride, ctx: LegContext): RideLeg {
     boardName: placeName(board, ctx.landmarks, route),
     alightName: placeName(alight, ctx.landmarks, route),
     km: ride.km,
-    minutes: (ride.km / SPEED_KMH[p.type]) * 60 * traffic.multiplier,
-    fare: computeFare(p.type, ride.km, ctx.discount, p.city),
+    minutes: (ride.km / SPEED_KMH[vehicle]) * 60 * traffic.multiplier,
+    fare: computeFare(vehicle, ride.km, ctx.discount, p.city),
     path: ride.path,
     trafficLevel: traffic.level,
     unverified: p.source === 'community' && p.status !== 'verified',
@@ -228,11 +365,16 @@ export function placeName(pt: LngLat, landmarks: Landmark[], route?: TransitRout
 
 function assemble(rawLegs: Leg[]): Trip {
   // Drop negligible walks (already standing on the route).
-  const legs = rawLegs.filter((l) => l.kind === 'ride' || l.meters >= 20 || rawLegs.length === 1);
+  const legs = rawLegs.filter(
+    (l) => l.kind === 'ride' || l.link || l.meters >= 20 || rawLegs.length === 1
+  );
   const rides = legs.filter((l): l is RideLeg => l.kind === 'ride');
   const walks = legs.filter((l): l is WalkLeg => l.kind === 'walk');
+  const segmentIds = legs.flatMap((l) =>
+    l.kind === 'ride' ? [l.routeId] : l.link ? [l.link.id] : []
+  );
   return {
-    id: rides.length ? rides.map((r) => r.routeId).join('>') : 'walk',
+    id: segmentIds.length ? segmentIds.join('>') : 'walk',
     legs,
     totalMinutes: legs.reduce((s, l) => s + l.minutes, 0),
     totalFare: rides.reduce((s, r) => s + r.fare, 0),
@@ -242,7 +384,7 @@ function assemble(rawLegs: Leg[]): Trip {
 }
 
 function score(t: Trip): number {
-  const unverified = t.legs.filter((l) => l.kind === 'ride' && l.unverified).length;
+  const unverified = t.legs.filter(isUnverified).length;
   return t.totalMinutes + t.transfers * TRANSFER_PENALTY_MIN + unverified * UNVERIFIED_PENALTY_MIN;
 }
 
