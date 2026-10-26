@@ -12,7 +12,8 @@ import {
   SESSION_DAYS,
   verifyPassword,
 } from './auth.ts';
-import { newRouteSchema, reportSchema, routeIdSchema } from './schema.ts';
+import { DirectionsUnavailable, type Directions } from './directions.ts';
+import { directionsQuerySchema, newRouteSchema, reportSchema, routeIdSchema } from './schema.ts';
 import type { PublicUser, RouteStore, StoredRoute } from './store.ts';
 
 /** Confirmations from other users needed before a community route shows as verified. */
@@ -37,6 +38,10 @@ export interface AppOptions {
   signupLimitPerHour?: number;
   /** Failed and successful attempts per username. */
   loginLimitPerHour?: number;
+  /** Road snapping per user; drawing one route takes a request per tap. */
+  directionsLimitPerHour?: number;
+  /** Road snapping backend; /directions answers 503 without it. */
+  directions?: Directions;
   now?: () => number;
 }
 
@@ -99,6 +104,7 @@ export function createApp(store: RouteStore, opts: AppOptions = {}) {
   const allowVote = rateLimiter(opts.confirmLimitPerHour ?? 60, now);
   const allowSignup = rateLimiter(opts.signupLimitPerHour ?? 30, now);
   const allowLogin = rateLimiter(opts.loginLimitPerHour ?? 20, now);
+  const allowDirections = rateLimiter(opts.directionsLimitPerHour ?? 600, now);
   const origins = (opts.corsOrigin ?? '*').split(',').map((o) => o.trim());
 
   const app = new Hono<Env>();
@@ -163,6 +169,26 @@ export function createApp(store: RouteStore, opts: AppOptions = {}) {
   });
 
   app.get('/auth/me', requireUser, (c) => c.json({ user: c.get('user') }));
+
+  app.get('/directions', requireUser, async (c) => {
+    if (!opts.directions) return c.json({ error: 'Road snapping is not set up' }, 503);
+    if (!allowDirections(c.get('user').id)) {
+      return c.json({ error: 'Too many requests, try again later' }, 429);
+    }
+    const parsed = directionsQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) return c.json(validationError(parsed.error.issues), 400);
+    try {
+      const result = await opts.directions(parsed.data.mode, parsed.data.points as [number, number][]);
+      if (!result) return c.json({ error: 'No road connects these points' }, 422);
+      return c.json(result);
+    } catch (e) {
+      if (e instanceof DirectionsUnavailable) {
+        console.error(e.message);
+        return c.json({ error: 'Road snapping is unavailable right now' }, 502);
+      }
+      throw e;
+    }
+  });
 
   app.get('/routes', async (c) => {
     const routes = await store.list();

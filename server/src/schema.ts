@@ -28,7 +28,8 @@ export const newRouteSchema = z
     direction: z.enum(['both', 'oneway']),
     operatingHours: z.string().trim().max(60).default(''),
     city: z.string().trim().max(40).optional(),
-    coordinates: z.array(lngLat).min(2).max(500),
+    // Road-snapped paths are dense: a point every few metres along each street.
+    coordinates: z.array(lngLat).min(2).max(5000),
     loadingPoints: z.array(z.object({ name: text(60), coord: lngLat })).max(30).default([]),
   })
   .superRefine((r, ctx) => {
@@ -65,6 +66,15 @@ export const newRouteSchema = z
 export type NewRoute = z.infer<typeof newRouteSchema>;
 
 export const routeIdSchema = z.uuid();
+
+/** GET /directions?mode=driving&points=lng,lat;lng,lat;… */
+export const directionsQuerySchema = z.object({
+  mode: z.enum(['driving', 'walking']),
+  points: z
+    .string()
+    .transform((s) => s.split(';').map((p) => p.split(',').map(Number)))
+    .pipe(z.array(lngLat).min(2).max(100)),
+});
 
 export const REPORT_REASONS = ['wrong_path', 'not_running', 'spam'] as const;
 export const reportSchema = z.object({ reason: z.enum(REPORT_REASONS) });

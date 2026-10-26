@@ -15,8 +15,8 @@ import {
 const native = (style: object) => style;
 
 /** Android/iOS route drawing map: tap to add a point. */
-export function DrawMap({ points, onAddPoint }: DrawMapProps) {
-  const { reference, draft } = useDraftData(points);
+export function DrawMap({ points, path, onAddPoint }: DrawMapProps) {
+  const { reference, draft } = useDraftData(points, path);
 
   return (
     <Map

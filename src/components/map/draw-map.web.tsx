@@ -14,8 +14,8 @@ import {
 } from './map-data';
 
 /** Web route drawing map: click to add a point. */
-export function DrawMap({ points, onAddPoint }: DrawMapProps) {
-  const { reference, draft } = useDraftData(points);
+export function DrawMap({ points, path, onAddPoint }: DrawMapProps) {
+  const { reference, draft } = useDraftData(points, path);
   const [lng, lat] = points[0] ?? DEFAULT_CENTER;
 
   return (

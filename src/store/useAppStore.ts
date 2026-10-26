@@ -19,8 +19,8 @@ export type CommunityStatus = 'disabled' | 'idle' | 'loading' | 'ready' | 'error
 /** The logged-in user's vote on a community route. */
 export type Vote = 'confirmed' | ReportReason;
 
-/** Default map centre and origin: Cubao. */
-export const DEFAULT_CENTER: LngLat = [121.0527, 14.6195];
+/** Where maps open before there's a trip or route to show: Bonifacio Global City, Taguig. */
+export const DEFAULT_CENTER: LngLat = [121.0509, 14.5507];
 
 interface AppState {
   dataset: RouteDataset;

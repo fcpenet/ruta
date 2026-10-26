@@ -81,6 +81,21 @@ fly deploy
 
 Tables are created on boot. Then set `EXPO_PUBLIC_API_URL=https://<app>.fly.dev` in Vercel (Project → Settings → Environment Variables) and redeploy the web app.
 
+## Road snapping (`routing/` → Fly.io)
+
+Add route draws lines along real streets: the app sends the tapped points to `GET /directions` on the API (login required, 600 requests/hour per user), which forwards them to a private [OSRM](https://project-osrm.org/) service with a driving profile (jeeps, tricycles) and a walking profile (walk links). OSRM also returns the street name at each tap, which pre-fills Mula/Hanggang.
+
+`routing/` builds OSRM data for Metro Manila and its edges (bbox 120.90,14.30 → 121.20,14.85) from Geofabrik's Philippines extract at image build time. It has no public ports; the API reaches it over Fly's private network:
+
+```bash
+fly deploy routing --remote-only              # app ruta-osrm-jem; ~1 GB machine
+fly secrets set -a ruta-api-jem \
+  OSRM_DRIVING_URL=http://ruta-osrm-jem.internal:5000 \
+  OSRM_WALKING_URL=http://ruta-osrm-jem.internal:5001
+```
+
+Redeploy `routing/` (with `--build-arg OSM_DATE=$(date +%F)`) to pick up newer map data. Without the `OSRM_*` secrets, `/directions` answers 503 and the app draws straight lines.
+
 ## Updating route data
 
 Bump `version` in `routes.ncr.json`. To push updates without an app release, host a JSON of the same shape and set `EXPO_PUBLIC_ROUTES_URL`; the app uses it when its `version` is higher than the bundled one.

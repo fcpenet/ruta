@@ -1,0 +1,11 @@
+# Private routing service: reachable only from the API over Fly's private network
+# (ruta-osrm-jem.internal:5000 driving, :5001 walking). No public ports.
+app = "ruta-osrm-jem"
+primary_region = "nrt"
+
+[build]
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

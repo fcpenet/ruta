@@ -217,14 +217,16 @@ export const LAYER_STYLES: {
 };
 
 export interface DrawMapProps {
-  /** Vertices of the route being drawn, in order. */
+  /** Points the user tapped, in order. */
   points: LngLat[];
+  /** The line to draw through them: road-snapped when available, else straight. */
+  path: LngLat[];
   /** Tap/click on the map. */
   onAddPoint: (coord: LngLat) => void;
 }
 
 /** Existing routes (faint, for reference) plus the draft line and its vertices. */
-export function useDraftData(points: LngLat[]) {
+export function useDraftData(points: LngLat[], path: LngLat[]) {
   const allRoutes = useAllRoutes();
   const reference = useMemo<FeatureCollection<LineString>>(
     () => ({
@@ -240,12 +242,12 @@ export function useDraftData(points: LngLat[]) {
     () => ({
       type: 'FeatureCollection',
       features: [
-        ...(points.length >= 2
+        ...(path.length >= 2
           ? [
               {
                 type: 'Feature' as const,
                 properties: {},
-                geometry: { type: 'LineString' as const, coordinates: points },
+                geometry: { type: 'LineString' as const, coordinates: path },
               },
             ]
           : []),
@@ -258,7 +260,7 @@ export function useDraftData(points: LngLat[]) {
         })),
       ],
     }),
-    [points]
+    [points, path]
   );
   return { reference, draft };
 }

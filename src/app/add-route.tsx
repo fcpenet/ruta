@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -15,9 +15,11 @@ import { DrawMap } from '@/components/map/draw-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useSnappedPath, type SnapStatus } from '@/hooks/use-snapped-path';
 import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/lib/api';
 import { submitRoute } from '@/lib/community';
+import { landmarks } from '@/lib/dataSource';
 import { fareTable } from '@/lib/fare';
 import { distanceM, lengthKm } from '@/lib/geo';
 import { useAppStore } from '@/store/useAppStore';
@@ -43,6 +45,26 @@ const DIRECTIONS = [
 
 const CITIES = Object.keys(fareTable.tricycle).filter((c) => c !== 'default');
 
+/** A landmark this close to a tapped point names it; otherwise the street does. */
+const LANDMARK_NAME_M = 150;
+
+const SNAP_NOTE: Partial<Record<SnapStatus, string>> = {
+  loading: 'Following the roads…',
+  noRoad: 'No road connects these points: drawn as straight lines.',
+  unavailable: 'Road snapping is unavailable right now: drawn as straight lines.',
+};
+
+/** Suggested name for a tapped point: a nearby landmark, else its street. */
+function suggestName(pt: LngLat | undefined, street: string | undefined): string {
+  if (!pt) return '';
+  let best: { name: string; d: number } | null = null;
+  for (const l of landmarks) {
+    const d = distanceM(pt, l.coord);
+    if (d <= LANDMARK_NAME_M && (!best || d < best.d)) best = { name: l.name, d };
+  }
+  return best?.name ?? street ?? '';
+}
+
 export default function AddRouteScreen() {
   const theme = useTheme();
   const { width } = useWindowDimensions();
@@ -53,9 +75,11 @@ export default function AddRouteScreen() {
   const authStatus = useAuthStore((s) => s.status);
 
   const [points, setPoints] = useState<LngLat[]>([]);
+  const [snap, setSnap] = useState(true);
   const [signboard, setSignboard] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  // null until the user types: the field shows the name suggested from the map instead.
+  const [fromInput, setFromInput] = useState<string | null>(null);
+  const [toInput, setToInput] = useState<string | null>(null);
   const [via, setVia] = useState('');
   const [type, setType] = useState<RouteType>('jeep');
   const [direction, setDirection] = useState<'both' | 'oneway'>('both');
@@ -63,6 +87,20 @@ export default function AddRouteScreen() {
   const [city, setCity] = useState<string | undefined>(undefined);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const walk = type === 'walk';
+  const snapped = useSnappedPath(points, walk ? 'walking' : 'driving', snap);
+  const path = snapped.path;
+  const suggestedFrom = useMemo(
+    () => suggestName(points[0], snapped.names[0]),
+    [points, snapped.names]
+  );
+  const suggestedTo = useMemo(
+    () => (points.length >= 2 ? suggestName(points[points.length - 1], snapped.names.at(-1)) : ''),
+    [points, snapped.names]
+  );
+  const from = fromInput ?? suggestedFrom;
+  const to = toInput ?? suggestedTo;
 
   if (communityStatus === 'disabled') {
     return (
@@ -91,9 +129,8 @@ export default function AddRouteScreen() {
     );
   }
 
-  const walk = type === 'walk';
-  const km = lengthKm(points);
-  const bigGap = points.some((p, i) => i > 0 && distanceM(points[i - 1], p) > MAX_GAP_M);
+  const km = lengthKm(path);
+  const bigGap = path.some((p, i) => i > 0 && distanceM(path[i - 1], p) > MAX_GAP_M);
   const tooLong = walk && km > MAX_WALK_KM;
   const missing = [
     points.length < 2 && 'at least 2 points on the map',
@@ -115,10 +152,10 @@ export default function AddRouteScreen() {
         direction: walk ? 'both' : direction,
         operatingHours: walk ? '' : hours.trim(),
         city: type === 'tricycle' ? city : undefined,
-        coordinates: points,
+        coordinates: path,
         loadingPoints: [
-          { name: from.trim(), coord: points[0] },
-          { name: to.trim(), coord: points[points.length - 1] },
+          { name: from.trim(), coord: path[0] },
+          { name: to.trim(), coord: path[path.length - 1] },
         ],
       });
       upsertCommunityRoute(created);
@@ -137,7 +174,7 @@ export default function AddRouteScreen() {
 
   const map = (
     <View style={wide ? styles.mapWide : styles.map}>
-      <DrawMap points={points} onAddPoint={(p) => setPoints((ps) => [...ps, p])} />
+      <DrawMap points={points} path={path} onAddPoint={(p) => setPoints((ps) => [...ps, p])} />
       <View style={styles.mapToolbar}>
         <ToolbarButton
           label="↶ Undo"
@@ -145,6 +182,10 @@ export default function AddRouteScreen() {
           onPress={() => setPoints((ps) => ps.slice(0, -1))}
         />
         <ToolbarButton label="Clear" disabled={points.length === 0} onPress={() => setPoints([])} />
+        <ToolbarButton
+          label={snap ? (walk ? '✓ Follow paths' : '✓ Follow roads') : 'Straight lines'}
+          onPress={() => setSnap((v) => !v)}
+        />
         {points.length > 0 && (
           <ThemedView type="backgroundElement" style={styles.stat}>
             <ThemedText type="small">
@@ -153,6 +194,11 @@ export default function AddRouteScreen() {
           </ThemedView>
         )}
       </View>
+      {SNAP_NOTE[snapped.status] && (
+        <ThemedView type="backgroundElement" style={[styles.stat, styles.snapNote]}>
+          <ThemedText type="small">{SNAP_NOTE[snapped.status]}</ThemedText>
+        </ThemedView>
+      )}
     </View>
   );
 
@@ -183,8 +229,8 @@ export default function AddRouteScreen() {
       keyboardShouldPersistTaps="handled">
       <ThemedText type="small" themeColor="textSecondary">
         {walk
-          ? `${wide ? 'Click' : 'Tap'} the map along the path you walk — a footbridge, alley, mall walkway or shortcut between two routes. Start and end close to the jeep lines it connects.`
-          : `${wide ? 'Click' : 'Tap'} the map along the road the jeep or tricycle takes, from one terminal to the other. Add a point at every turn so the line follows the street.`}
+          ? `${wide ? 'Click' : 'Tap'} where the walk starts and ends, close to the jeep lines it connects, plus any turns. The line follows footpaths; switch to straight lines for walkways the map doesn’t know (malls, footbridges).`
+          : `${wide ? 'Click' : 'Tap'} on the road at the first terminal, wherever the jeep turns, and at the last terminal. The line follows the streets between your taps; if it takes a wrong turn, undo and tap the right road.`}
       </ThemedText>
       {bigGap && (
         <ThemedText type="small" style={styles.error}>
@@ -204,8 +250,12 @@ export default function AddRouteScreen() {
       {!walk &&
         field('Karatula (signboard)', signboard, setSignboard, 'e.g. CUBAO – QUIAPO', 'characters')}
       <View style={styles.row}>
-        <View style={styles.flex}>{field('Mula (start)', from, setFrom, 'e.g. Cubao')}</View>
-        <View style={styles.flex}>{field('Hanggang (end)', to, setTo, 'e.g. Quiapo')}</View>
+        <View style={styles.flex}>
+          {field('Mula (start)', from, setFromInput, 'Tap the map, or type')}
+        </View>
+        <View style={styles.flex}>
+          {field('Hanggang (end)', to, setToInput, 'Tap the map, or type')}
+        </View>
       </View>
       {field(
         walk ? 'Daan (optional)' : 'Via (optional)',
@@ -351,11 +401,15 @@ const styles = StyleSheet.create({
   disabled: { flex: 1, padding: Spacing.four, gap: Spacing.two, justifyContent: 'center' },
   map: { height: '45%', minHeight: 240 },
   mapWide: { flex: 1 },
+  snapNote: { position: 'absolute', left: Spacing.two, bottom: Spacing.two },
   mapToolbar: {
     position: 'absolute',
     left: Spacing.two,
+    // Leave room for the zoom buttons in the top-right corner.
+    right: 56,
     top: Spacing.two,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.one,
   },
   stat: { borderRadius: Spacing.three, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one },

@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 
 import { createApp } from './app.ts';
+import { osrmDirections } from './directions.ts';
 import { LibsqlStore } from './libsql-store.ts';
 import { MemoryStore, type RouteStore } from './store.ts';
 
@@ -17,7 +18,15 @@ if (databaseUrl) {
   store = new MemoryStore();
 }
 
-const app = createApp(store, { corsOrigin: process.env.CORS_ORIGIN });
+// Private OSRM service (routing/), e.g. http://ruta-osrm-jem.internal:5000 and :5001.
+const { OSRM_DRIVING_URL, OSRM_WALKING_URL } = process.env;
+const directions =
+  OSRM_DRIVING_URL && OSRM_WALKING_URL
+    ? osrmDirections({ driving: OSRM_DRIVING_URL, walking: OSRM_WALKING_URL })
+    : undefined;
+if (!directions) console.warn('OSRM_*_URL not set — /directions is disabled; drawn routes stay straight.');
+
+const app = createApp(store, { corsOrigin: process.env.CORS_ORIGIN, directions });
 
 serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => {
   console.log(`ruta-api listening on :${info.port}`);
