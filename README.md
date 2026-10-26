@@ -40,7 +40,7 @@ Mobile apps ship through EAS (`npx eas-cli@latest build`), not Vercel.
 
 ## Community routes API (`server/` → Fly.io)
 
-Node 24 + Hono + Postgres. No accounts: each install sends an anonymous `X-Device-Id` used for attribution, rate limits (10 submissions/hour) and one confirmation per device. This is spam friction, not authentication.
+Node 24 + Hono + Turso (libSQL). No accounts: each install sends an anonymous `X-Device-Id` used for attribution, rate limits (10 submissions/hour) and one confirmation per device. This is spam friction, not authentication.
 
 | Method | Path | |
 | --- | --- | --- |
@@ -50,10 +50,11 @@ Node 24 + Hono + Postgres. No accounts: each install sends an anonymous `X-Devic
 
 ```bash
 cd server && npm install
-npm run dev        # http://localhost:8080, in-memory store unless DATABASE_URL is set
-npm test           # API tests (in-memory)
-npm run test:pg    # same tests against real Postgres (PGlite, no Docker needed)
+npm run dev        # http://localhost:8080, in-memory store unless TURSO_DATABASE_URL is set
+npm test           # API tests (in-memory + in-memory SQLite via libSQL)
 ```
+
+For a persistent local database: `TURSO_DATABASE_URL=file:local.db npm run dev`.
 
 Point the app at it with `EXPO_PUBLIC_API_URL=http://localhost:8080 npm run web`. Without that variable the app runs on bundled routes only and hides "Add route".
 
@@ -61,11 +62,11 @@ Point the app at it with `EXPO_PUBLIC_API_URL=http://localhost:8080 npm run web`
 
 ```bash
 cd server
-# edit `app` in fly.toml to a unique name, then:
-fly launch --no-deploy --copy-config
-fly postgres create --name ruta-db --region sin   # or Fly Managed Postgres: fly mpg create
-fly postgres attach ruta-db                       # sets the DATABASE_URL secret
-fly secrets set CORS_ORIGIN=https://<your-app>.vercel.app
+turso db create ruta --location aws-ap-northeast-1   # Tokyo; fly.toml uses nrt to match
+fly launch --no-deploy --copy-config              # app name is in fly.toml
+fly secrets set TURSO_DATABASE_URL="$(turso db show ruta --url)" \
+  TURSO_AUTH_TOKEN="$(turso db tokens create ruta)" \
+  CORS_ORIGIN=https://<your-app>.vercel.app
 fly deploy
 ```
 

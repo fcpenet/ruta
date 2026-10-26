@@ -1,6 +1,5 @@
-# Change `app` to a unique name before `fly launch` / `fly deploy`.
-app = "ruta-api"
-primary_region = "sin"
+app = "ruta-api-jem"
+primary_region = "nrt"
 
 [build]
 

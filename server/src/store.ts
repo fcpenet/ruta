@@ -12,7 +12,7 @@ export interface StoredRoute extends NewRoute {
 
 export type ConfirmResult = 'ok' | 'not_found' | 'own_route';
 
-/** Persistence boundary: Postgres in production, in-memory for tests and local dev. */
+/** Persistence boundary: Turso (libSQL) in production, in-memory for tests and local dev. */
 export interface RouteStore {
   list(): Promise<StoredRoute[]>;
   create(route: NewRoute & { color: string; authorDevice: string }): Promise<StoredRoute>;

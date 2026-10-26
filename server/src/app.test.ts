@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { createApp, VERIFY_THRESHOLD } from './app.ts';
-import { PgStore } from './pg-store.ts';
+import { LibsqlStore } from './libsql-store.ts';
 import { MemoryStore, type RouteStore } from './store.ts';
 
 const route = {
@@ -42,7 +42,7 @@ interface TestStore {
   close(): Promise<void>;
 }
 
-// Runs the same suite against Postgres when TEST_DATABASE_URL is set.
+// Runs the same suite against each store; libSQL uses an in-memory SQLite database.
 const stores: [string, () => Promise<TestStore>][] = [
   [
     'memory',
@@ -54,17 +54,15 @@ const stores: [string, () => Promise<TestStore>][] = [
       return t;
     },
   ],
-];
-if (process.env.TEST_DATABASE_URL) {
-  stores.push([
-    'postgres',
+  [
+    'libsql',
     async () => {
-      const pg = new PgStore(process.env.TEST_DATABASE_URL!);
-      await pg.migrate();
-      return { store: pg, reset: () => pg.truncateAll(), close: () => pg.close() };
+      const db = new LibsqlStore(':memory:');
+      await db.migrate();
+      return { store: db, reset: () => db.truncateAll(), close: () => db.close() };
     },
-  ]);
-}
+  ],
+];
 
 for (const [name, makeStore] of stores) {
   describe(`community routes API (${name})`, () => {

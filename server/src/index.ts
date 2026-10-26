@@ -1,19 +1,19 @@
 import { serve } from '@hono/node-server';
 
 import { createApp } from './app.ts';
-import { PgStore } from './pg-store.ts';
+import { LibsqlStore } from './libsql-store.ts';
 import { MemoryStore, type RouteStore } from './store.ts';
 
 const port = Number(process.env.PORT ?? 8080);
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.TURSO_DATABASE_URL;
 
 let store: RouteStore;
 if (databaseUrl) {
-  const pg = new PgStore(databaseUrl);
-  await pg.migrate();
-  store = pg;
+  const db = new LibsqlStore(databaseUrl, process.env.TURSO_AUTH_TOKEN);
+  await db.migrate();
+  store = db;
 } else {
-  console.warn('DATABASE_URL not set — using in-memory store; routes are lost on restart.');
+  console.warn('TURSO_DATABASE_URL not set — using in-memory store; routes are lost on restart.');
   store = new MemoryStore();
 }
 
