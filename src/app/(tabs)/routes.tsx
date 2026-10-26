@@ -7,9 +7,10 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { CommunityApiError } from '@/lib/community';
+import { ApiError } from '@/lib/api';
 import { lengthKm } from '@/lib/geo';
 import { useAllRoutes, useAppStore } from '@/store/useAppStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import type { LngLat, TransitRoute, VehicleType } from '@/types';
 
 type Filter = 'all' | 'community' | VehicleType;
@@ -36,6 +37,7 @@ export default function RoutesScreen() {
   const loadCommunityRoutes = useAppStore((s) => s.loadCommunityRoutes);
   const highlightRoute = useAppStore((s) => s.highlightRoute);
   const selectTrip = useAppStore((s) => s.selectTrip);
+  const signedIn = useAuthStore((s) => s.status === 'signedIn');
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
 
@@ -66,7 +68,11 @@ export default function RoutesScreen() {
             </ThemedText>
             {communityStatus !== 'disabled' && (
               <Pressable
-                onPress={() => router.push('/add-route')}
+                onPress={() =>
+                  signedIn
+                    ? router.push('/add-route')
+                    : router.push({ pathname: '/sign-in', params: { next: 'add-route' } })
+                }
                 accessibilityRole="button"
                 style={[styles.addButton, { backgroundColor: theme.accent }]}>
                 <ThemedText type="smallBold" style={{ color: theme.accentText }}>
@@ -78,6 +84,7 @@ export default function RoutesScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             {dataset.region} · data v{dataset.version}, updated {dataset.updatedAt}
           </ThemedText>
+          {communityStatus !== 'disabled' && <AccountRow />}
           {communityStatus === 'loading' && <ActivityIndicator style={styles.status} />}
           {communityStatus === 'error' && (
             <Pressable onPress={loadCommunityRoutes}>
@@ -168,7 +175,9 @@ function RouteCard({ route, onPress }: { route: TransitRoute; onPress: () => voi
           `${km.toFixed(1)} km`,
           p.direction === 'oneway' ? 'one way' : 'both ways',
           p.operatingHours,
-          community ? `added ${p.lastVerified}` : `checked ${p.lastVerified}`,
+          community
+            ? `added ${p.lastVerified}${p.author ? ` by @${p.author}` : ''}`
+            : `checked ${p.lastVerified}`,
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -180,9 +189,31 @@ function RouteCard({ route, onPress }: { route: TransitRoute; onPress: () => voi
   );
 }
 
+function AccountRow() {
+  const theme = useTheme();
+  const user = useAuthStore((s) => s.user);
+  const status = useAuthStore((s) => s.status);
+  const logOut = useAuthStore((s) => s.logOut);
+  if (status === 'loading') return null;
+  return (
+    <View style={styles.accountRow}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {user ? `Logged in as @${user.username}` : 'Log in to add or confirm routes.'}
+      </ThemedText>
+      <Pressable onPress={user ? logOut : () => router.push('/sign-in')} accessibilityRole="button">
+        <ThemedText type="smallBold" style={{ color: theme.accent }}>
+          {user ? 'Log out' : 'Log in / Sign up'}
+        </ThemedText>
+      </Pressable>
+    </View>
+  );
+}
+
 function CommunityBadge({ route }: { route: TransitRoute }) {
   const theme = useTheme();
   const p = route.properties;
+  const user = useAuthStore((s) => s.user);
+  const own = !!user && p.author === user.username;
   const confirmCommunityRoute = useAppStore((s) => s.confirmCommunityRoute);
   const confirmed = useAppStore((s) => s.confirmedIds.includes(p.id));
   const [busy, setBusy] = useState(false);
@@ -190,12 +221,16 @@ function CommunityBadge({ route }: { route: TransitRoute }) {
   const verified = p.status === 'verified';
 
   const confirm = async () => {
+    if (!user) {
+      router.push('/sign-in');
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
       await confirmCommunityRoute(p.id);
     } catch (e) {
-      setMessage(e instanceof CommunityApiError ? e.message : 'Couldn’t confirm. Try again.');
+      setMessage(e instanceof ApiError ? e.message : 'Couldn’t confirm. Try again.');
     } finally {
       setBusy(false);
     }
@@ -211,7 +246,11 @@ function CommunityBadge({ route }: { route: TransitRoute }) {
       <ThemedText type="small" themeColor="textSecondary">
         {p.confirmations ?? 0} confirmed
       </ThemedText>
-      {!confirmed ? (
+      {own ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          You added this
+        </ThemedText>
+      ) : !confirmed ? (
         <Pressable
           onPress={confirm}
           disabled={busy}
@@ -237,6 +276,7 @@ function CommunityBadge({ route }: { route: TransitRoute }) {
 }
 
 const styles = StyleSheet.create({
+  accountRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   title: { flex: 1 },
   addButton: {

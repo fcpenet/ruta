@@ -4,6 +4,7 @@ import { useColorScheme } from 'react-native';
 
 import { loadRoutes } from '@/lib/dataSource';
 import { useAppStore } from '@/store/useAppStore';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -17,6 +18,7 @@ export default function RootLayout() {
       if (d !== useAppStore.getState().dataset) setDataset(d);
     });
     loadCommunityRoutes();
+    useAuthStore.getState().restore();
   }, [setDataset, loadCommunityRoutes]);
 
   return (
@@ -27,6 +29,7 @@ export default function RootLayout() {
           name="add-route"
           options={{ headerShown: true, title: 'Magdagdag ng ruta', presentation: 'fullScreenModal' }}
         />
+        <Stack.Screen name="sign-in" options={{ headerShown: true, title: 'Account', presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
   );

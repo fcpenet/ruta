@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 
-import { API_URL, confirmRoute, fetchCommunityRoutes } from '@/lib/community';
+import { API_URL } from '@/lib/api';
+import { confirmRoute, fetchCommunityRoutes } from '@/lib/community';
 import { getBundledRoutes, landmarks } from '@/lib/dataSource';
 import { planTrips } from '@/lib/planner';
 import type { DiscountType, LngLat, RouteDataset, TransitRoute, Trip } from '@/types';
@@ -23,7 +24,7 @@ interface AppState {
   /** Routes added by commuters through the community API. */
   communityRoutes: TransitRoute[];
   communityStatus: CommunityStatus;
-  /** Community route IDs this device has confirmed this session. */
+  /** Community route IDs the logged-in user has confirmed this session. */
   confirmedIds: string[];
   origin: Place | null;
   destination: Place | null;

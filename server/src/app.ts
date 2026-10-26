@@ -1,11 +1,21 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
+import { createMiddleware } from 'hono/factory';
 
-import { deviceIdSchema, newRouteSchema } from './schema.ts';
-import type { RouteStore, StoredRoute } from './store.ts';
+import {
+  credentialsSchema,
+  DUMMY_HASH,
+  hashPassword,
+  hashToken,
+  newSessionToken,
+  SESSION_DAYS,
+  verifyPassword,
+} from './auth.ts';
+import { newRouteSchema, routeIdSchema } from './schema.ts';
+import type { PublicUser, RouteStore, StoredRoute } from './store.ts';
 
-/** Confirmations from other devices needed before a community route shows as verified. */
+/** Confirmations from other users needed before a community route shows as verified. */
 export const VERIFY_THRESHOLD = 3;
 
 const PALETTE = ['#D1495B', '#EDAE49', '#00798C', '#30638E', '#8F2D56', '#3D7068', '#E26D5C', '#5C4D7D'];
@@ -15,6 +25,10 @@ export interface AppOptions {
   corsOrigin?: string;
   submitLimitPerHour?: number;
   confirmLimitPerHour?: number;
+  /** Per client IP. Generous because mobile carriers put many users behind one IP. */
+  signupLimitPerHour?: number;
+  /** Failed and successful attempts per username. */
+  loginLimitPerHour?: number;
   now?: () => number;
 }
 
@@ -34,6 +48,7 @@ export function toFeature(r: StoredRoute) {
       lastVerified: r.createdAt.slice(0, 10),
       city: r.city,
       source: 'community' as const,
+      author: r.author,
       confirmations: r.confirmations,
       status: r.confirmations >= VERIFY_THRESHOLD ? ('verified' as const) : ('unverified' as const),
       createdAt: r.createdAt,
@@ -55,68 +70,120 @@ function rateLimiter(limit: number, now: () => number) {
   };
 }
 
+type Env = { Variables: { user: PublicUser; tokenHash: string } };
+
+const clientIp = (c: Context) => c.req.header('Fly-Client-IP') ?? 'local';
+
+function bearerToken(c: Context) {
+  const match = c.req.header('Authorization')?.match(/^Bearer (\S+)$/);
+  return match?.[1] ?? null;
+}
+
+const validationError = (issues: { path: PropertyKey[]; message: string }[]) => ({
+  error: issues[0]?.message ?? 'Invalid request',
+  issues: issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+});
+
 export function createApp(store: RouteStore, opts: AppOptions = {}) {
   const now = opts.now ?? Date.now;
   const allowSubmit = rateLimiter(opts.submitLimitPerHour ?? 10, now);
   const allowConfirm = rateLimiter(opts.confirmLimitPerHour ?? 60, now);
+  const allowSignup = rateLimiter(opts.signupLimitPerHour ?? 30, now);
+  const allowLogin = rateLimiter(opts.loginLimitPerHour ?? 20, now);
   const origins = (opts.corsOrigin ?? '*').split(',').map((o) => o.trim());
 
-  const app = new Hono();
+  const app = new Hono<Env>();
 
   app.use(
     '*',
     cors({
       origin: origins.includes('*') ? '*' : origins,
       allowMethods: ['GET', 'POST', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'X-Device-Id'],
+      allowHeaders: ['Content-Type', 'Authorization'],
     })
   );
   app.use('*', bodyLimit({ maxSize: 256 * 1024 }));
 
-  const deviceId = (header: string | undefined) => deviceIdSchema.safeParse(header);
+  const requireUser = createMiddleware<Env>(async (c, next) => {
+    const token = bearerToken(c);
+    const session = token ? await store.findSession(hashToken(token)) : null;
+    if (!session || Date.parse(session.expiresAt) <= now()) {
+      return c.json({ error: 'Please log in first' }, 401);
+    }
+    c.set('user', session.user);
+    c.set('tokenHash', hashToken(token!));
+    await next();
+  });
+
+  const startSession = async (user: PublicUser) => {
+    const token = newSessionToken();
+    const expiresAt = new Date(now() + SESSION_DAYS * 86400_000).toISOString();
+    await store.createSession(hashToken(token), user.id, expiresAt);
+    return { token, user: { id: user.id, username: user.username } };
+  };
 
   app.get('/health', (c) => c.json({ ok: true }));
+
+  app.post('/auth/signup', async (c) => {
+    if (!allowSignup(clientIp(c))) return c.json({ error: 'Too many sign-ups, try again later' }, 429);
+    const parsed = credentialsSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json(validationError(parsed.error.issues), 400);
+
+    const user = await store.createUser(parsed.data.username, await hashPassword(parsed.data.password));
+    if (!user) return c.json({ error: 'That username is taken' }, 409);
+    return c.json(await startSession(user), 201);
+  });
+
+  app.post('/auth/login', async (c) => {
+    const parsed = credentialsSchema.safeParse(await c.req.json().catch(() => null));
+    // Don't echo validation rules on login; any malformed input is just wrong credentials.
+    if (!parsed.success) return c.json({ error: 'Wrong username or password' }, 401);
+    if (!allowLogin(parsed.data.username)) {
+      return c.json({ error: 'Too many login attempts, try again later' }, 429);
+    }
+
+    const user = await store.findUserByUsername(parsed.data.username);
+    const ok = await verifyPassword(parsed.data.password, user?.passwordHash ?? DUMMY_HASH);
+    if (!user || !ok) return c.json({ error: 'Wrong username or password' }, 401);
+    return c.json(await startSession(user));
+  });
+
+  app.post('/auth/logout', requireUser, async (c) => {
+    await store.deleteSession(c.get('tokenHash'));
+    return c.json({ ok: true });
+  });
+
+  app.get('/auth/me', requireUser, (c) => c.json({ user: c.get('user') }));
 
   app.get('/routes', async (c) => {
     const routes = await store.list();
     return c.json({ verifyThreshold: VERIFY_THRESHOLD, routes: routes.map(toFeature) });
   });
 
-  app.post('/routes', async (c) => {
-    const device = deviceId(c.req.header('X-Device-Id'));
-    if (!device.success) return c.json({ error: 'Missing or invalid X-Device-Id' }, 400);
-    if (!allowSubmit(device.data)) return c.json({ error: 'Too many submissions, try again later' }, 429);
+  app.post('/routes', requireUser, async (c) => {
+    const user = c.get('user');
+    if (!allowSubmit(user.id)) return c.json({ error: 'Too many submissions, try again later' }, 429);
 
-    const body = await c.req.json().catch(() => null);
-    const parsed = newRouteSchema.safeParse(body);
-    if (!parsed.success) {
-      return c.json(
-        {
-          error: 'Invalid route',
-          issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
-        },
-        400
-      );
-    }
+    const parsed = newRouteSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ ...validationError(parsed.error.issues), error: 'Invalid route' }, 400);
 
     const count = (await store.list()).length;
     const route = await store.create({
       ...parsed.data,
       color: PALETTE[count % PALETTE.length],
-      authorDevice: device.data,
+      authorId: user.id,
     });
     return c.json({ route: toFeature(route) }, 201);
   });
 
-  app.post('/routes/:id/confirm', async (c) => {
-    const device = deviceId(c.req.header('X-Device-Id'));
-    if (!device.success) return c.json({ error: 'Missing or invalid X-Device-Id' }, 400);
-    if (!allowConfirm(device.data)) return c.json({ error: 'Too many confirmations, try again later' }, 429);
+  app.post('/routes/:id/confirm', requireUser, async (c) => {
+    const user = c.get('user');
+    if (!allowConfirm(user.id)) return c.json({ error: 'Too many confirmations, try again later' }, 429);
 
     const id = c.req.param('id');
-    if (!deviceIdSchema.safeParse(id).success) return c.json({ error: 'Route not found' }, 404);
+    if (!routeIdSchema.safeParse(id).success) return c.json({ error: 'Route not found' }, 404);
 
-    const { result, route } = await store.confirm(id, device.data);
+    const { result, route } = await store.confirm(id, user.id);
     if (result === 'not_found') return c.json({ error: 'Route not found' }, 404);
     if (result === 'own_route') return c.json({ error: 'You can’t confirm a route you added' }, 403);
     return c.json({ route: toFeature(route!) });

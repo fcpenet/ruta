@@ -47,8 +47,7 @@ export const newRouteSchema = z
 
 export type NewRoute = z.infer<typeof newRouteSchema>;
 
-/** Anonymous per-install ID sent as X-Device-Id. Not authentication — just attribution and dedupe. */
-export const deviceIdSchema = z.uuid();
+export const routeIdSchema = z.uuid();
 
 export function haversineKm([lng1, lat1]: [number, number], [lng2, lat2]: [number, number]): number {
   const rad = Math.PI / 180;

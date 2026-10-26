@@ -40,13 +40,19 @@ Mobile apps ship through EAS (`npx eas-cli@latest build`), not Vercel.
 
 ## Community routes API (`server/` → Fly.io)
 
-Node 24 + Hono + Turso (libSQL). No accounts: each install sends an anonymous `X-Device-Id` used for attribution, rate limits (10 submissions/hour) and one confirmation per device. This is spam friction, not authentication.
+Node 24 + Hono + Turso (libSQL). Username + password accounts: passwords are hashed with scrypt, and logins get a 30-day opaque session token (only its SHA-256 is stored) sent as `Authorization: Bearer <token>`. Anyone can read routes; adding and confirming need a login. Limits: 10 submissions/hour per user, 20 login attempts/hour per username, 30 sign-ups/hour per IP.
 
-| Method | Path | |
-| --- | --- | --- |
-| GET | `/routes` | All community routes as GeoJSON features (`status`: `unverified`/`verified`) |
-| POST | `/routes` | Submit a route (validated: inside PH, ≥2 points, ≤5 km between points) |
-| POST | `/routes/:id/confirm` | Confirm a route (not your own; idempotent) |
+| Method | Path | Auth | |
+| --- | --- | --- | --- |
+| POST | `/auth/signup` | | `{username, password}` → `{token, user}`. Username 3–20 of `a-z 0-9 _ .` (case-insensitive), password ≥8 chars |
+| POST | `/auth/login` | | `{username, password}` → `{token, user}` |
+| POST | `/auth/logout` | ✓ | Revokes the session |
+| GET | `/auth/me` | ✓ | Current user |
+| GET | `/routes` | | All community routes as GeoJSON features (`status`: `unverified`/`verified`, `author`) |
+| POST | `/routes` | ✓ | Submit a route (validated: inside PH, ≥2 points, ≤5 km between points) |
+| POST | `/routes/:id/confirm` | ✓ | Confirm a route (not your own; once per user) |
+
+There's no password reset yet; forgotten passwords mean a new account.
 
 ```bash
 cd server && npm install

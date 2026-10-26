@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { createApp, VERIFY_THRESHOLD } from './app.ts';
+import { createApp, VERIFY_THRESHOLD, type AppOptions } from './app.ts';
 import { LibsqlStore } from './libsql-store.ts';
 import { MemoryStore, type RouteStore } from './store.ts';
 
@@ -23,16 +23,25 @@ const route = {
   ],
 };
 
-function client(store: RouteStore, opts = {}) {
+function client(store: RouteStore, opts: AppOptions = {}) {
   const app = createApp(store, opts);
+  const post = (path: string, body: unknown, token?: string) =>
+    app.request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+  let n = 0;
   return {
-    get: (path: string) => app.request(path),
-    post: (path: string, body: unknown, device: string | null = randomUUID()) =>
-      app.request(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(device ? { 'X-Device-Id': device } : {}) },
-        body: JSON.stringify(body),
-      }),
+    get: (path: string, token?: string) =>
+      app.request(path, token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+    post,
+    /** Signs up a fresh user and returns its session token. */
+    user: async (username = `user_${++n}`) => {
+      const res = await post('/auth/signup', { username, password: 'jeepney123' });
+      assert.equal(res.status, 201);
+      return (await res.json()).token as string;
+    },
   };
 }
 
@@ -65,26 +74,79 @@ const stores: [string, () => Promise<TestStore>][] = [
 ];
 
 for (const [name, makeStore] of stores) {
-  describe(`community routes API (${name})`, () => {
+  describe(`auth (${name})`, () => {
     let t: TestStore;
-    let store: RouteStore;
     before(async () => {
       t = await makeStore();
     });
-    beforeEach(async () => {
-      await t.reset();
-      store = t.store;
-    });
+    beforeEach(() => t.reset());
     after(() => t.close());
 
-    it('creates a route and lists it as an unverified community feature', async () => {
-      const api = client(store);
-      const res = await api.post('/routes', route);
+    it('signs up, logs in, and reads the current user', async () => {
+      const api = client(t.store);
+      const signup = await api.post('/auth/signup', { username: '  Juan.Dela_Cruz ', password: 'jeepney123' });
+      assert.equal(signup.status, 201);
+      const { token, user } = await signup.json();
+      assert.equal(user.username, 'juan.dela_cruz');
+
+      const me = await (await api.get('/auth/me', token)).json();
+      assert.equal(me.user.username, 'juan.dela_cruz');
+
+      const login = await api.post('/auth/login', { username: 'JUAN.DELA_CRUZ', password: 'jeepney123' });
+      assert.equal(login.status, 200);
+      assert.notEqual((await login.json()).token, token);
+    });
+
+    it('rejects taken usernames and weak input', async () => {
+      const api = client(t.store);
+      await api.user('maria');
+      assert.equal((await api.post('/auth/signup', { username: 'MARIA', password: 'jeepney123' })).status, 409);
+      const short = await api.post('/auth/signup', { username: 'ana', password: 'short' });
+      assert.equal(short.status, 400);
+      assert.match((await short.json()).error, /at least 8/);
+      assert.equal((await api.post('/auth/signup', { username: 'a b', password: 'jeepney123' })).status, 400);
+    });
+
+    it('rejects wrong passwords and unknown users the same way', async () => {
+      const api = client(t.store);
+      await api.user('pedro');
+      const wrong = await api.post('/auth/login', { username: 'pedro', password: 'wrongpass1' });
+      const unknown = await api.post('/auth/login', { username: 'nobody', password: 'jeepney123' });
+      assert.equal(wrong.status, 401);
+      assert.equal(unknown.status, 401);
+      assert.deepEqual(await wrong.json(), await unknown.json());
+    });
+
+    it('logs out and expires sessions', async () => {
+      let clock = Date.now();
+      const api = client(t.store, { now: () => clock });
+      const token = await api.user();
+      assert.equal((await api.post('/auth/logout', {}, token)).status, 200);
+      assert.equal((await api.get('/auth/me', token)).status, 401);
+
+      const fresh = await api.user();
+      clock += 31 * 86400_000;
+      assert.equal((await api.get('/auth/me', fresh)).status, 401);
+    });
+  });
+
+  describe(`community routes API (${name})`, () => {
+    let t: TestStore;
+    before(async () => {
+      t = await makeStore();
+    });
+    beforeEach(() => t.reset());
+    after(() => t.close());
+
+    it('creates a route and lists it as an unverified community feature with its author', async () => {
+      const api = client(t.store);
+      const res = await api.post('/routes', route, await api.user('kuya_jun'));
       assert.equal(res.status, 201);
       const { route: created } = await res.json();
       assert.equal(created.type, 'Feature');
       assert.equal(created.properties.source, 'community');
       assert.equal(created.properties.status, 'unverified');
+      assert.equal(created.properties.author, 'kuya_jun');
       assert.deepEqual(created.geometry.coordinates, route.coordinates);
 
       const list = await (await api.get('/routes')).json();
@@ -92,61 +154,75 @@ for (const [name, makeStore] of stores) {
       assert.equal(list.routes[0].properties.signboard, 'KAMUNING – CUBAO');
     });
 
-    it('rejects requests without a device id', async () => {
-      const res = await client(store).post('/routes', route, null);
-      assert.equal(res.status, 400);
+    it('requires login to submit or confirm', async () => {
+      const api = client(t.store);
+      assert.equal((await api.post('/routes', route)).status, 401);
+      assert.equal((await api.post('/routes', route, 'not-a-real-token')).status, 401);
+      assert.equal((await api.post(`/routes/${randomUUID()}/confirm`, {})).status, 401);
     });
 
     it('rejects routes outside the Philippines or with huge jumps', async () => {
-      const api = client(store);
-      const abroad = await api.post('/routes', { ...route, coordinates: [[139.69, 35.68], [139.7, 35.69]] });
+      const api = client(t.store);
+      const token = await api.user();
+      const abroad = await api.post('/routes', { ...route, coordinates: [[139.69, 35.68], [139.7, 35.69]] }, token);
       assert.equal(abroad.status, 400);
-      const jump = await api.post('/routes', { ...route, coordinates: [[121.0, 14.6], [121.2, 14.6]] });
+      const jump = await api.post('/routes', { ...route, coordinates: [[121.0, 14.6], [121.2, 14.6]] }, token);
       assert.equal(jump.status, 400);
       const body = await jump.json();
       assert.match(body.issues[0].message, /more than 5 km apart/);
     });
 
     it('rejects a single-point route and missing fields', async () => {
-      const api = client(store);
-      assert.equal((await api.post('/routes', { ...route, coordinates: [[121.0, 14.6]] })).status, 400);
-      assert.equal((await api.post('/routes', { ...route, signboard: '  ' })).status, 400);
+      const api = client(t.store);
+      const token = await api.user();
+      assert.equal((await api.post('/routes', { ...route, coordinates: [[121.0, 14.6]] }, token)).status, 400);
+      assert.equal((await api.post('/routes', { ...route, signboard: '  ' }, token)).status, 400);
     });
 
     it('verifies a route after enough distinct confirmations, ignoring the author and repeats', async () => {
-      const author = randomUUID();
-      const api = client(store);
+      const api = client(t.store);
+      const author = await api.user();
       const { route: created } = await (await api.post('/routes', route, author)).json();
-      const confirm = (device: string) => api.post(`/routes/${created.properties.id}/confirm`, {}, device);
+      const confirm = (token: string) => api.post(`/routes/${created.properties.id}/confirm`, {}, token);
 
       assert.equal((await confirm(author)).status, 403);
 
-      const first = randomUUID();
+      const first = await api.user();
       await confirm(first);
       const again = await (await confirm(first)).json();
       assert.equal(again.route.properties.confirmations, 1);
 
-      for (let i = 1; i < VERIFY_THRESHOLD; i++) await confirm(randomUUID());
+      for (let i = 1; i < VERIFY_THRESHOLD; i++) await confirm(await api.user());
       const list = await (await api.get('/routes')).json();
       assert.equal(list.routes[0].properties.status, 'verified');
     });
 
     it('404s when confirming an unknown route', async () => {
-      const res = await client(store).post(`/routes/${randomUUID()}/confirm`, {});
+      const api = client(t.store);
+      const res = await api.post(`/routes/${randomUUID()}/confirm`, {}, await api.user());
       assert.equal(res.status, 404);
     });
   });
 }
 
 describe('rate limiting', () => {
-  it('limits submissions per device per hour', async () => {
+  it('limits submissions per user per hour', async () => {
     let t = 0;
     const api = client(new MemoryStore(), { submitLimitPerHour: 2, now: () => t });
-    const device = randomUUID();
-    assert.equal((await api.post('/routes', route, device)).status, 201);
-    assert.equal((await api.post('/routes', route, device)).status, 201);
-    assert.equal((await api.post('/routes', route, device)).status, 429);
+    const token = await api.user();
+    assert.equal((await api.post('/routes', route, token)).status, 201);
+    assert.equal((await api.post('/routes', route, token)).status, 201);
+    assert.equal((await api.post('/routes', route, token)).status, 429);
     t += 3600_001;
-    assert.equal((await api.post('/routes', route, device)).status, 201);
+    assert.equal((await api.post('/routes', route, token)).status, 201);
+  });
+
+  it('limits login attempts per username', async () => {
+    const api = client(new MemoryStore(), { loginLimitPerHour: 2 });
+    await api.user('target');
+    const attempt = () => api.post('/auth/login', { username: 'target', password: 'guess12345' });
+    assert.equal((await attempt()).status, 401);
+    assert.equal((await attempt()).status, 401);
+    assert.equal((await attempt()).status, 429);
   });
 });

@@ -27,6 +27,8 @@ export interface RouteProps {
   source?: 'official' | 'community';
   status?: 'unverified' | 'verified';
   confirmations?: number;
+  /** Username of the commuter who added a community route. */
+  author?: string;
 }
 
 export type TransitRoute = Feature<LineString, RouteProps>;

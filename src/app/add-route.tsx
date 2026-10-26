@@ -16,10 +16,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { CommunityApiError, submitRoute } from '@/lib/community';
+import { ApiError } from '@/lib/api';
+import { submitRoute } from '@/lib/community';
 import { fareTable } from '@/lib/fare';
 import { distanceM, lengthKm } from '@/lib/geo';
 import { useAppStore } from '@/store/useAppStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import type { LngLat, VehicleType } from '@/types';
 
 const MAX_GAP_M = 5000;
@@ -45,6 +47,7 @@ export default function AddRouteScreen() {
   const communityStatus = useAppStore((s) => s.communityStatus);
   const upsertCommunityRoute = useAppStore((s) => s.upsertCommunityRoute);
   const highlightRoute = useAppStore((s) => s.highlightRoute);
+  const authStatus = useAuthStore((s) => s.status);
 
   const [points, setPoints] = useState<LngLat[]>([]);
   const [signboard, setSignboard] = useState('');
@@ -65,6 +68,22 @@ export default function AddRouteScreen() {
         <ThemedText type="small" themeColor="textSecondary">
           Set EXPO_PUBLIC_API_URL to the Ruta API (server/) to let commuters add routes.
         </ThemedText>
+      </ThemedView>
+    );
+  }
+
+  if (authStatus === 'signedOut') {
+    return (
+      <ThemedView style={styles.disabled}>
+        <ThemedText type="smallBold">Log in to add a route.</ThemedText>
+        <Pressable
+          onPress={() => router.replace({ pathname: '/sign-in', params: { next: 'add-route' } })}
+          accessibilityRole="button"
+          style={[styles.submit, { backgroundColor: theme.accent }]}>
+          <ThemedText type="smallBold" style={{ color: theme.accentText }}>
+            Log in / Sign up
+          </ThemedText>
+        </Pressable>
       </ThemedView>
     );
   }
@@ -101,7 +120,7 @@ export default function AddRouteScreen() {
       highlightRoute(created.properties.id);
       router.back();
     } catch (e) {
-      if (e instanceof CommunityApiError) {
+      if (e instanceof ApiError) {
         setError([e.message, ...e.issues.map((i) => i.message)].join('\n'));
       } else {
         setError('Something went wrong. Please try again.');
