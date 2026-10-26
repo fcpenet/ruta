@@ -1,4 +1,5 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
+import './maplibre-worker.web';
 
 import { Layer, Map, NavigationControl, Source } from 'react-map-gl/maplibre';
 

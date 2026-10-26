@@ -58,7 +58,8 @@
     "lint": "expo lint",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "build:web": "expo export -p web"
+    "build:web": "expo export -p web",
+    "postinstall": "node scripts/copy-maplibre-worker.mjs"
   },
   "private": true,
   "jest": {

@@ -44,3 +44,6 @@ example
 
 # local libSQL database
 server/*.db
+
+# copied from node_modules on install (scripts/copy-maplibre-worker.mjs)
+public/maplibre-gl-worker.mjs
