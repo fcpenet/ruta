@@ -49,6 +49,10 @@ export type NewRoute = z.infer<typeof newRouteSchema>;
 
 export const routeIdSchema = z.uuid();
 
+export const REPORT_REASONS = ['wrong_path', 'not_running', 'spam'] as const;
+export const reportSchema = z.object({ reason: z.enum(REPORT_REASONS) });
+export type ReportReason = (typeof REPORT_REASONS)[number];
+
 export function haversineKm([lng1, lat1]: [number, number], [lng2, lat2]: [number, number]): number {
   const rad = Math.PI / 180;
   const dLat = (lat2 - lat1) * rad;

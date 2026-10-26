@@ -68,6 +68,8 @@ export function planTrips(origin: LngLat, destination: LngLat, opts: PlanOptions
   const near = (pt: LngLat): Map<string, Candidate> => {
     const out = new Map<string, Candidate>();
     for (const route of routes) {
+      // Commuters reported it as wrong or no longer running.
+      if (route.properties.status === 'disputed') continue;
       const coords = route.geometry.coordinates as LngLat[];
       const snap = snapToLine(coords, pt);
       if (snap.offsetM <= walkRadiusM) out.set(route.properties.id, { route, coords, snap });

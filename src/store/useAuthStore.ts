@@ -21,15 +21,15 @@ interface AuthState {
 function clearLocal() {
   setAuthToken(null);
   writeSession(null);
-  // Confirmations are per account.
-  useAppStore.setState({ confirmedIds: [] });
+  // Votes are per account.
+  useAppStore.setState({ myVotes: {} });
   useAuthStore.setState({ status: 'signedOut', user: null });
 }
 
 async function start(session: Session) {
   setAuthToken(session.token);
   await writeSession(JSON.stringify(session));
-  useAppStore.setState({ confirmedIds: [] });
+  useAppStore.setState({ myVotes: {} });
   useAuthStore.setState({ status: 'signedIn', user: session.user });
 }
 

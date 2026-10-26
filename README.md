@@ -48,9 +48,12 @@ Node 24 + Hono + Turso (libSQL). Username + password accounts: passwords are has
 | POST | `/auth/login` | | `{username, password}` → `{token, user}` |
 | POST | `/auth/logout` | ✓ | Revokes the session |
 | GET | `/auth/me` | ✓ | Current user |
-| GET | `/routes` | | All community routes as GeoJSON features (`status`: `unverified`/`verified`, `author`) |
+| GET | `/routes` | | All community routes as GeoJSON features (`status`, `confirmations`, `reports`, `author`) |
 | POST | `/routes` | ✓ | Submit a route (validated: inside PH, ≥2 points, ≤5 km between points) |
 | POST | `/routes/:id/confirm` | ✓ | Confirm a route (not your own; once per user) |
+| POST | `/routes/:id/report` | ✓ | `{reason: "wrong_path" \| "not_running" \| "spam"}`; replaces your confirmation if any |
+
+Each user has one vote per route: a confirmation or a report. `status` is `disputed` when reports − confirmations ≥ 2 (the app stops suggesting it in trips), else `verified` at ≥3 confirmations, else `unverified`.
 
 There's no password reset yet; forgotten passwords mean a new account.
 

@@ -25,13 +25,17 @@ export interface RouteProps {
   city?: string;
   /** Absent for bundled data; 'community' for routes added by commuters. */
   source?: 'official' | 'community';
-  status?: 'unverified' | 'verified';
+  /** 'disputed' when commuters' reports outnumber confirmations; the planner skips these. */
+  status?: 'unverified' | 'verified' | 'disputed';
   confirmations?: number;
+  reports?: number;
   /** Username of the commuter who added a community route. */
   author?: string;
 }
 
 export type TransitRoute = Feature<LineString, RouteProps>;
+
+export type ReportReason = 'wrong_path' | 'not_running' | 'spam';
 
 export interface RouteDataset {
   version: number;

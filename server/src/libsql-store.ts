@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { createClient, type Client, type Row } from '@libsql/client';
 
-import type { NewRoute } from './schema.ts';
-import type { ConfirmResult, NewStoredRoute, RouteStore, StoredRoute, User } from './store.ts';
+import type { NewRoute, ReportReason } from './schema.ts';
+import type { NewStoredRoute, RouteStore, StoredRoute, User, VoteResult } from './store.ts';
 
 const MIGRATION = `
 create table if not exists users (
@@ -41,12 +41,21 @@ create table if not exists route_confirmations (
   primary key (route_id, user_id)
 );
 
+create table if not exists route_reports (
+  route_id text not null references community_routes (id) on delete cascade,
+  user_id text not null references users (id) on delete cascade,
+  reason text not null check (reason in ('wrong_path', 'not_running', 'spam')),
+  created_at text not null,
+  primary key (route_id, user_id)
+);
+
 create index if not exists community_routes_created_at on community_routes (created_at);
 `;
 
 const SELECT = `
   select r.*, u.username as author,
-    (select count(*) from route_confirmations c where c.route_id = r.id) as confirmations
+    (select count(*) from route_confirmations c where c.route_id = r.id) as confirmations,
+    (select count(*) from route_reports p where p.route_id = r.id) as reports
   from community_routes r join users u on u.id = r.author_id
 `;
 
@@ -66,6 +75,7 @@ function toRoute(row: Row): StoredRoute {
     author: row.author as string,
     createdAt: row.created_at as string,
     confirmations: Number(row.confirmations),
+    reports: Number(row.reports),
   };
 }
 
@@ -93,7 +103,12 @@ export class LibsqlStore implements RouteStore {
   /** Test helper: empties all tables. */
   async truncateAll() {
     await this.db.batch(
-      ['delete from route_confirmations', 'delete from community_routes', 'delete from sessions', 'delete from users'],
+      [
+        'delete from route_confirmations',
+        'delete from route_reports',
+        'delete from community_routes', 'delete from sessions',
+        'delete from users',
+      ],
       'write'
     );
   }
@@ -131,14 +146,40 @@ export class LibsqlStore implements RouteStore {
     return (await this.get(id))!;
   }
 
-  async confirm(routeId: string, userId: string): Promise<{ result: ConfirmResult; route?: StoredRoute }> {
+  async confirm(routeId: string, userId: string): Promise<{ result: VoteResult; route?: StoredRoute }> {
     const route = await this.get(routeId);
     if (!route) return { result: 'not_found' };
     if (route.authorId === userId) return { result: 'own_route' };
-    await this.db.execute({
-      sql: 'insert or ignore into route_confirmations (route_id, user_id, created_at) values (?, ?, ?)',
-      args: [routeId, userId, new Date().toISOString()],
-    });
+    await this.db.batch(
+      [
+        { sql: 'delete from route_reports where route_id = ? and user_id = ?', args: [routeId, userId] },
+        {
+          sql: 'insert or ignore into route_confirmations (route_id, user_id, created_at) values (?, ?, ?)',
+          args: [routeId, userId, new Date().toISOString()],
+        },
+      ],
+      'write'
+    );
+    return { result: 'ok', route: (await this.get(routeId))! };
+  }
+
+  async report(
+    routeId: string,
+    userId: string,
+    reason: ReportReason
+  ): Promise<{ result: VoteResult; route?: StoredRoute }> {
+    if (!(await this.get(routeId))) return { result: 'not_found' };
+    await this.db.batch(
+      [
+        { sql: 'delete from route_confirmations where route_id = ? and user_id = ?', args: [routeId, userId] },
+        {
+          sql: `insert into route_reports (route_id, user_id, reason, created_at) values (?, ?, ?, ?)
+            on conflict (route_id, user_id) do update set reason = excluded.reason`,
+          args: [routeId, userId, reason, new Date().toISOString()],
+        },
+      ],
+      'write'
+    );
     return { result: 'ok', route: (await this.get(routeId))! };
   }
 

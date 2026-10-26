@@ -244,7 +244,7 @@ export default function AddRouteScreen() {
         )}
       </Pressable>
       <ThemedText type="small" themeColor="textSecondary">
-        New routes show as “unverified” until other commuters confirm them.
+        New routes show as “unverified” until other commuters confirm them. Routes that get more reports than confirmations are hidden from trip suggestions.
       </ThemedText>
     </ScrollView>
   );

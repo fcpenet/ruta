@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { createApp, VERIFY_THRESHOLD, type AppOptions } from './app.ts';
+import { createApp, DISPUTE_MARGIN, VERIFY_THRESHOLD, type AppOptions } from './app.ts';
 import { LibsqlStore } from './libsql-store.ts';
 import { MemoryStore, type RouteStore } from './store.ts';
 
@@ -195,6 +195,42 @@ for (const [name, makeStore] of stores) {
       for (let i = 1; i < VERIFY_THRESHOLD; i++) await confirm(await api.user());
       const list = await (await api.get('/routes')).json();
       assert.equal(list.routes[0].properties.status, 'verified');
+    });
+
+    it('disputes a route once reports outnumber confirmations by DISPUTE_MARGIN', async () => {
+      const api = client(t.store);
+      const { route: created } = await (await api.post('/routes', route, await api.user())).json();
+      const id = created.properties.id;
+      const report = (token: string, reason = 'wrong_path') => api.post(`/routes/${id}/report`, { reason }, token);
+      const confirm = (token: string) => api.post(`/routes/${id}/confirm`, {}, token);
+
+      const fan = await api.user();
+      await confirm(fan);
+      for (let i = 0; i < DISPUTE_MARGIN; i++) await report(await api.user());
+      let p = (await (await api.get('/routes')).json()).routes[0].properties;
+      assert.deepEqual([p.confirmations, p.reports, p.status], [1, DISPUTE_MARGIN, 'unverified']);
+
+      // The fan changes their mind: their confirmation becomes a report.
+      const res = await report(fan, 'not_running');
+      assert.equal(res.status, 200);
+      p = (await res.json()).route.properties;
+      assert.deepEqual([p.confirmations, p.reports, p.status], [0, DISPUTE_MARGIN + 1, 'disputed']);
+
+      // Repeating a report counts once; confirming again swaps it back.
+      await report(fan, 'spam');
+      p = (await (await confirm(fan)).json()).route.properties;
+      assert.deepEqual([p.confirmations, p.reports, p.status], [1, DISPUTE_MARGIN, 'unverified']);
+    });
+
+    it('validates reports and lets authors report their own route', async () => {
+      const api = client(t.store);
+      const author = await api.user();
+      const { route: created } = await (await api.post('/routes', route, author)).json();
+      const id = created.properties.id;
+      assert.equal((await api.post(`/routes/${id}/report`, { reason: 'wrong_path' })).status, 401);
+      assert.equal((await api.post(`/routes/${id}/report`, { reason: 'ugly' }, author)).status, 400);
+      assert.equal((await api.post(`/routes/${id}/report`, { reason: 'not_running' }, author)).status, 200);
+      assert.equal((await api.post(`/routes/${randomUUID()}/report`, { reason: 'spam' }, author)).status, 404);
     });
 
     it('404s when confirming an unknown route', async () => {

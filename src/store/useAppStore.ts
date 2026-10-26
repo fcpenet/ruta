@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 
 import { API_URL } from '@/lib/api';
-import { confirmRoute, fetchCommunityRoutes } from '@/lib/community';
+import { confirmRoute, fetchCommunityRoutes, reportRoute } from '@/lib/community';
 import { getBundledRoutes, landmarks } from '@/lib/dataSource';
 import { planTrips } from '@/lib/planner';
-import type { DiscountType, LngLat, RouteDataset, TransitRoute, Trip } from '@/types';
+import type { DiscountType, LngLat, ReportReason, RouteDataset, TransitRoute, Trip } from '@/types';
 
 export interface Place {
   name: string;
@@ -16,6 +16,9 @@ export type PickTarget = 'origin' | 'destination';
 
 export type CommunityStatus = 'disabled' | 'idle' | 'loading' | 'ready' | 'error';
 
+/** The logged-in user's vote on a community route. */
+export type Vote = 'confirmed' | ReportReason;
+
 /** Default map centre and origin: Cubao. */
 export const DEFAULT_CENTER: LngLat = [121.0527, 14.6195];
 
@@ -24,8 +27,8 @@ interface AppState {
   /** Routes added by commuters through the community API. */
   communityRoutes: TransitRoute[];
   communityStatus: CommunityStatus;
-  /** Community route IDs the logged-in user has confirmed this session. */
-  confirmedIds: string[];
+  /** Votes the logged-in user cast this session, by route ID. */
+  myVotes: Record<string, Vote>;
   origin: Place | null;
   destination: Place | null;
   pickTarget: PickTarget;
@@ -43,6 +46,7 @@ interface AppState {
   /** Adds or replaces a community route (after submit or confirm). */
   upsertCommunityRoute: (r: TransitRoute) => void;
   confirmCommunityRoute: (id: string) => Promise<void>;
+  reportCommunityRoute: (id: string, reason: ReportReason) => Promise<void>;
   setPlace: (target: PickTarget, place: Place | null) => void;
   setPickTarget: (t: PickTarget) => void;
   swapPlaces: () => void;
@@ -88,7 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   dataset: getBundledRoutes(),
   communityRoutes: [],
   communityStatus: API_URL ? 'idle' : 'disabled',
-  confirmedIds: [],
+  myVotes: {},
   origin: null,
   destination: null,
   pickTarget: 'destination',
@@ -118,7 +122,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   confirmCommunityRoute: async (id) => {
     const route = await confirmRoute(id);
     get().upsertCommunityRoute(route);
-    set({ confirmedIds: [...get().confirmedIds, id] });
+    set({ myVotes: { ...get().myVotes, [id]: 'confirmed' } });
+  },
+  reportCommunityRoute: async (id, reason) => {
+    const route = await reportRoute(id, reason);
+    get().upsertCommunityRoute(route);
+    set({ myVotes: { ...get().myVotes, [id]: reason } });
   },
   setPlace: (target, place) => {
     const next = { ...get(), [target]: place };

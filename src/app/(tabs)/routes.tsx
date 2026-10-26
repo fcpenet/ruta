@@ -11,7 +11,7 @@ import { ApiError } from '@/lib/api';
 import { lengthKm } from '@/lib/geo';
 import { useAllRoutes, useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
-import type { LngLat, TransitRoute, VehicleType } from '@/types';
+import type { LngLat, ReportReason, TransitRoute, VehicleType } from '@/types';
 
 type Filter = 'all' | 'community' | VehicleType;
 
@@ -209,18 +209,32 @@ function AccountRow() {
   );
 }
 
+const REPORT_REASONS: { value: ReportReason; label: string }[] = [
+  { value: 'wrong_path', label: 'Maling daan (wrong path)' },
+  { value: 'not_running', label: 'Wala na (not running)' },
+  { value: 'spam', label: 'Spam / fake' },
+];
+
+const BADGES = {
+  verified: { color: '#1A7F37', label: '✓ Verified by commuters' },
+  unverified: { color: '#9A6700', label: '⚠ Unverified · added by a commuter' },
+  disputed: { color: '#CF222E', label: '✕ Disputed · reported by commuters' },
+};
+
 function CommunityBadge({ route }: { route: TransitRoute }) {
   const theme = useTheme();
   const p = route.properties;
   const user = useAuthStore((s) => s.user);
   const own = !!user && p.author === user.username;
   const confirmCommunityRoute = useAppStore((s) => s.confirmCommunityRoute);
-  const confirmed = useAppStore((s) => s.confirmedIds.includes(p.id));
+  const reportCommunityRoute = useAppStore((s) => s.reportCommunityRoute);
+  const vote = useAppStore((s) => s.myVotes[p.id]);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const verified = p.status === 'verified';
+  const badge = BADGES[p.status ?? 'unverified'];
 
-  const confirm = async () => {
+  const run = async (action: () => Promise<void>) => {
     if (!user) {
       router.push('/sign-in');
       return;
@@ -228,50 +242,113 @@ function CommunityBadge({ route }: { route: TransitRoute }) {
     setBusy(true);
     setMessage(null);
     try {
-      await confirmCommunityRoute(p.id);
+      await action();
+      setPicking(false);
     } catch (e) {
-      setMessage(e instanceof ApiError ? e.message : 'Couldn’t confirm. Try again.');
+      setMessage(e instanceof ApiError ? e.message : 'Couldn’t send. Try again.');
     } finally {
       setBusy(false);
     }
   };
 
+  const reported = vote && vote !== 'confirmed';
+  const reasonLabel = REPORT_REASONS.find((r) => r.value === vote)?.label;
+
   return (
-    <View style={styles.badgeRow}>
-      <View style={[styles.badge, { backgroundColor: verified ? '#1A7F37' : '#9A6700' }]}>
-        <ThemedText type="small" style={styles.badgeText}>
-          {verified ? '✓ Verified by commuters' : '⚠ Unverified · added by a commuter'}
+    <View style={styles.badgeBlock}>
+      <View style={styles.badgeRow}>
+        <View style={[styles.badge, { backgroundColor: badge.color }]}>
+          <ThemedText type="small" style={styles.badgeText}>
+            {badge.label}
+          </ThemedText>
+        </View>
+        <ThemedText type="small" themeColor="textSecondary">
+          {p.confirmations ?? 0} confirmed · {p.reports ?? 0} reported
         </ThemedText>
       </View>
-      <ThemedText type="small" themeColor="textSecondary">
-        {p.confirmations ?? 0} confirmed
-      </ThemedText>
-      {own ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          You added this
-        </ThemedText>
-      ) : !confirmed ? (
-        <Pressable
-          onPress={confirm}
-          disabled={busy}
-          accessibilityRole="button"
-          accessibilityHint="Confirm you have ridden this route"
-          style={[styles.confirm, { borderColor: theme.accent }]}>
-          <ThemedText type="small" style={{ color: theme.accent }}>
-            {busy ? '…' : 'Nasakyan ko ’to ✓'}
-          </ThemedText>
-        </Pressable>
-      ) : (
+
+      {vote && (
         <ThemedText type="small" style={{ color: theme.accent }}>
-          Salamat sa pag-confirm!
+          {reported ? `Salamat! You reported: ${reasonLabel}.` : 'Salamat sa pag-confirm!'}
         </ThemedText>
       )}
+
+      {picking ? (
+        <View style={styles.badgeRow}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Ano ang mali?
+          </ThemedText>
+          {REPORT_REASONS.map((r) => (
+            <VoteButton
+              key={r.value}
+              label={r.label}
+              color="#CF222E"
+              disabled={busy}
+              onPress={() => run(() => reportCommunityRoute(p.id, r.value))}
+            />
+          ))}
+          <VoteButton label="Cancel" color={theme.textSecondary} onPress={() => setPicking(false)} />
+        </View>
+      ) : (
+        <View style={styles.badgeRow}>
+          {own ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              You added this
+            </ThemedText>
+          ) : (
+            vote !== 'confirmed' && (
+              <VoteButton
+                label={busy ? '…' : 'Nasakyan ko ’to ✓'}
+                hint="Confirm you have ridden this route"
+                color={theme.accent}
+                disabled={busy}
+                onPress={() => run(() => confirmCommunityRoute(p.id))}
+              />
+            )
+          )}
+          <VoteButton
+            label={reported ? 'Change report' : 'Mali ’to'}
+            hint="Report this route as wrong, not running, or fake"
+            color="#CF222E"
+            disabled={busy}
+            onPress={() => (user ? setPicking(true) : router.push('/sign-in'))}
+          />
+        </View>
+      )}
+
       {message && (
         <ThemedText type="small" style={styles.errorText}>
           {message}
         </ThemedText>
       )}
     </View>
+  );
+}
+
+function VoteButton({
+  label,
+  hint,
+  color,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  hint?: string;
+  color: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityHint={hint}
+      style={[styles.confirm, { borderColor: color }]}>
+      <ThemedText type="small" style={{ color }}>
+        {label}
+      </ThemedText>
+    </Pressable>
   );
 }
 
@@ -286,6 +363,7 @@ const styles = StyleSheet.create({
   },
   status: { alignSelf: 'flex-start' },
   errorText: { color: '#CF222E' },
+  badgeBlock: { gap: Spacing.one },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
   badge: { borderRadius: Spacing.one, paddingHorizontal: Spacing.two, paddingVertical: Spacing.half },
   badgeText: { color: '#ffffff', fontSize: 12 },

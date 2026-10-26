@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { NewRoute } from './schema.ts';
+import type { NewRoute, ReportReason } from './schema.ts';
 
 export interface StoredRoute extends NewRoute {
   id: string;
@@ -10,6 +10,7 @@ export interface StoredRoute extends NewRoute {
   author: string;
   createdAt: string;
   confirmations: number;
+  reports: number;
 }
 
 export interface User {
@@ -21,7 +22,7 @@ export interface User {
 
 export type PublicUser = Pick<User, 'id' | 'username'>;
 
-export type ConfirmResult = 'ok' | 'not_found' | 'own_route';
+export type VoteResult = 'ok' | 'not_found' | 'own_route';
 
 export type NewStoredRoute = NewRoute & { color: string; authorId: string };
 
@@ -29,8 +30,12 @@ export type NewStoredRoute = NewRoute & { color: string; authorId: string };
 export interface RouteStore {
   list(): Promise<StoredRoute[]>;
   create(route: NewStoredRoute): Promise<StoredRoute>;
-  /** Idempotent per user: confirming twice counts once. */
-  confirm(routeId: string, userId: string): Promise<{ result: ConfirmResult; route?: StoredRoute }>;
+  /**
+   * One vote per user per route: confirming replaces that user's report and vice versa.
+   * Repeats count once (a repeated report updates the reason). Authors can't confirm their own route.
+   */
+  confirm(routeId: string, userId: string): Promise<{ result: VoteResult; route?: StoredRoute }>;
+  report(routeId: string, userId: string, reason: ReportReason): Promise<{ result: VoteResult; route?: StoredRoute }>;
 
   /** Returns null when the username is taken. */
   createUser(username: string, passwordHash: string): Promise<User | null>;
@@ -41,8 +46,9 @@ export interface RouteStore {
 }
 
 export class MemoryStore implements RouteStore {
-  private routes = new Map<string, Omit<StoredRoute, 'confirmations' | 'author'>>();
+  private routes = new Map<string, Omit<StoredRoute, 'confirmations' | 'reports' | 'author'>>();
   private confirmations = new Map<string, Set<string>>();
+  private reports = new Map<string, Map<string, ReportReason>>();
   private users = new Map<string, User>();
   private sessions = new Map<string, { userId: string; expiresAt: string }>();
 
@@ -54,6 +60,7 @@ export class MemoryStore implements RouteStore {
     const stored = { ...route, id: randomUUID(), createdAt: new Date().toISOString() };
     this.routes.set(stored.id, stored);
     this.confirmations.set(stored.id, new Set());
+    this.reports.set(stored.id, new Map());
     return this.withCounts(stored);
   }
 
@@ -61,7 +68,16 @@ export class MemoryStore implements RouteStore {
     const route = this.routes.get(routeId);
     if (!route) return { result: 'not_found' as const };
     if (route.authorId === userId) return { result: 'own_route' as const };
+    this.reports.get(routeId)!.delete(userId);
     this.confirmations.get(routeId)!.add(userId);
+    return { result: 'ok' as const, route: this.withCounts(route) };
+  }
+
+  async report(routeId: string, userId: string, reason: ReportReason) {
+    const route = this.routes.get(routeId);
+    if (!route) return { result: 'not_found' as const };
+    this.confirmations.get(routeId)!.delete(userId);
+    this.reports.get(routeId)!.set(userId, reason);
     return { result: 'ok' as const, route: this.withCounts(route) };
   }
 
@@ -90,11 +106,12 @@ export class MemoryStore implements RouteStore {
     this.sessions.delete(tokenHash);
   }
 
-  private withCounts(r: Omit<StoredRoute, 'confirmations' | 'author'>): StoredRoute {
+  private withCounts(r: Omit<StoredRoute, 'confirmations' | 'reports' | 'author'>): StoredRoute {
     return {
       ...r,
       author: this.users.get(r.authorId)?.username ?? 'unknown',
       confirmations: this.confirmations.get(r.id)?.size ?? 0,
+      reports: this.reports.get(r.id)?.size ?? 0,
     };
   }
 }
