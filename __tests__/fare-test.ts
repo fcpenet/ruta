@@ -20,4 +20,12 @@ describe('computeFare', () => {
     expect(computeFare('tricycle', 1, 'regular', 'quezon_city')).toBe(15);
     expect(computeFare('tricycle', 2.5, 'regular', 'nowhere')).toBe(15 + 2 * 5);
   });
+
+  it('uses a route’s own fare when commuters agreed on one', () => {
+    expect(computeFare('tricycle', 3, 'regular', undefined, { kind: 'flat', amount: 25 })).toBe(25);
+    expect(computeFare('tricycle', 9, 'student', undefined, { kind: 'flat', amount: 25 })).toBe(20);
+    const rule = { kind: 'distance' as const, base: 15, baseKm: 4, perKm: 2.5 };
+    expect(computeFare('jeep', 4, 'regular', undefined, rule)).toBe(15);
+    expect(computeFare('jeep', 6.2, 'regular', undefined, rule)).toBe(22.5);
+  });
 });

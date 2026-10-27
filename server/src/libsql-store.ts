@@ -2,8 +2,16 @@ import { randomUUID } from 'node:crypto';
 
 import { createClient, type Client, type Row } from '@libsql/client';
 
-import type { NewRoute, ReportReason } from './schema.ts';
-import type { NewStoredRoute, RouteStore, StoredRoute, User, VoteResult } from './store.ts';
+import type { Fare, NewRoute, ReportReason } from './schema.ts';
+import {
+  timestamp,
+  type NewStoredRoute,
+  type RouteStore,
+  type StoredFare,
+  type StoredRoute,
+  type User,
+  type VoteResult,
+} from './store.ts';
 
 const communityRoutesTable = (name: string) => `create table if not exists ${name} (
   id text primary key,
@@ -51,13 +59,37 @@ create table if not exists route_reports (
   primary key (route_id, user_id)
 );
 
+create table if not exists route_fares (
+  id text primary key,
+  route_id text not null references community_routes (id) on delete cascade,
+  user_id text not null references users (id) on delete cascade,
+  kind text not null check (kind in ('flat', 'distance')),
+  amount real,
+  base real,
+  base_km real,
+  per_km real,
+  created_at text not null
+);
+
+create table if not exists fare_supporters (
+  fare_id text not null references route_fares (id) on delete cascade,
+  user_id text not null references users (id) on delete cascade,
+  created_at text not null,
+  primary key (fare_id, user_id)
+);
+
 create index if not exists community_routes_created_at on community_routes (created_at);
+create index if not exists route_fares_route on route_fares (route_id, created_at);
 `;
 
 const SELECT = `
   select r.*, u.username as author,
     (select count(*) from route_confirmations c where c.route_id = r.id) as confirmations,
-    (select count(*) from route_reports p where p.route_id = r.id) as reports
+    (select count(*) from route_reports p where p.route_id = r.id) as reports,
+    (select count(*) from route_reports p
+      where p.route_id = r.id and p.reason = 'not_running'
+        and p.created_at > coalesce((select max(c.created_at) from route_confirmations c where c.route_id = r.id), '')
+    ) as fresh_not_running
   from community_routes r join users u on u.id = r.author_id
 `;
 
@@ -78,7 +110,34 @@ function toRoute(row: Row): StoredRoute {
     createdAt: row.created_at as string,
     confirmations: Number(row.confirmations),
     reports: Number(row.reports),
+    freshNotRunning: Number(row.fresh_not_running),
+    fares: [],
   };
+}
+
+const FARES = `
+  select f.*, u.username as proposed_by,
+    (select count(*) from fare_supporters s where s.fare_id = f.id) as supporters
+  from route_fares f join users u on u.id = f.user_id
+`;
+
+function toFare(row: Row): StoredFare & { routeId: string } {
+  const base = {
+    id: row.id as string,
+    routeId: row.route_id as string,
+    proposedBy: row.proposed_by as string,
+    supporters: Number(row.supporters),
+    createdAt: row.created_at as string,
+  };
+  return row.kind === 'flat'
+    ? { ...base, kind: 'flat', amount: Number(row.amount) }
+    : {
+        ...base,
+        kind: 'distance',
+        base: Number(row.base),
+        baseKm: Number(row.base_km),
+        perKm: Number(row.per_km),
+      };
 }
 
 function toUser(row: Row): User {
@@ -126,6 +185,8 @@ export class LibsqlStore implements RouteStore {
   async truncateAll() {
     await this.db.batch(
       [
+        'delete from fare_supporters',
+        'delete from route_fares',
         'delete from route_confirmations',
         'delete from route_reports',
         'delete from community_routes', 'delete from sessions',
@@ -141,7 +202,16 @@ export class LibsqlStore implements RouteStore {
 
   async list() {
     const { rows } = await this.db.execute(`${SELECT} order by r.created_at desc limit 1000`);
-    return rows.map(toRoute);
+    const { rows: fareRows } = await this.db.execute(`${FARES} order by f.created_at desc`);
+    return this.withFares(rows.map(toRoute), fareRows);
+  }
+
+  private withFares(routes: StoredRoute[], fareRows: Row[]): StoredRoute[] {
+    const byRoute = new Map<string, StoredFare[]>();
+    for (const { routeId, ...fare } of fareRows.map(toFare)) {
+      byRoute.set(routeId, [...(byRoute.get(routeId) ?? []), fare]);
+    }
+    return routes.map((r) => ({ ...r, fares: byRoute.get(r.id) ?? [] }));
   }
 
   async create(route: NewStoredRoute) {
@@ -162,7 +232,7 @@ export class LibsqlStore implements RouteStore {
         JSON.stringify(route.coordinates),
         JSON.stringify(route.loadingPoints),
         route.authorId,
-        new Date().toISOString(),
+        timestamp(),
       ],
     });
     return (await this.get(id))!;
@@ -176,8 +246,10 @@ export class LibsqlStore implements RouteStore {
       [
         { sql: 'delete from route_reports where route_id = ? and user_id = ?', args: [routeId, userId] },
         {
-          sql: 'insert or ignore into route_confirmations (route_id, user_id, created_at) values (?, ?, ?)',
-          args: [routeId, userId, new Date().toISOString()],
+          // Riding it again refreshes the date, which outweighs older "not running" reports.
+          sql: `insert into route_confirmations (route_id, user_id, created_at) values (?, ?, ?)
+            on conflict (route_id, user_id) do update set created_at = excluded.created_at`,
+          args: [routeId, userId, timestamp()],
         },
       ],
       'write'
@@ -196,8 +268,8 @@ export class LibsqlStore implements RouteStore {
         { sql: 'delete from route_confirmations where route_id = ? and user_id = ?', args: [routeId, userId] },
         {
           sql: `insert into route_reports (route_id, user_id, reason, created_at) values (?, ?, ?, ?)
-            on conflict (route_id, user_id) do update set reason = excluded.reason`,
-          args: [routeId, userId, reason, new Date().toISOString()],
+            on conflict (route_id, user_id) do update set reason = excluded.reason, created_at = excluded.created_at`,
+          args: [routeId, userId, reason, timestamp()],
         },
       ],
       'write'
@@ -205,8 +277,60 @@ export class LibsqlStore implements RouteStore {
     return { result: 'ok', route: (await this.get(routeId))! };
   }
 
+  async proposeFare(
+    routeId: string,
+    userId: string,
+    fare: Fare
+  ): Promise<{ result: VoteResult; route?: StoredRoute }> {
+    if (!(await this.get(routeId))) return { result: 'not_found' };
+    const id = randomUUID();
+    const at = timestamp();
+    await this.db.batch(
+      [
+        {
+          sql: `insert into route_fares (id, route_id, user_id, kind, amount, base, base_km, per_km, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            id,
+            routeId,
+            userId,
+            fare.kind,
+            fare.kind === 'flat' ? fare.amount : null,
+            fare.kind === 'distance' ? fare.base : null,
+            fare.kind === 'distance' ? fare.baseKm : null,
+            fare.kind === 'distance' ? fare.perKm : null,
+            at,
+          ],
+        },
+        {
+          sql: 'insert into fare_supporters (fare_id, user_id, created_at) values (?, ?, ?)',
+          args: [id, userId, at],
+        },
+      ],
+      'write'
+    );
+    return { result: 'ok', route: (await this.get(routeId))! };
+  }
+
+  async supportFare(
+    routeId: string,
+    fareId: string,
+    userId: string
+  ): Promise<{ result: VoteResult; route?: StoredRoute }> {
+    const { rows } = await this.db.execute({
+      sql: 'select 1 from route_fares where id = ? and route_id = ?',
+      args: [fareId, routeId],
+    });
+    if (!rows.length) return { result: 'not_found' };
+    await this.db.execute({
+      sql: 'insert or ignore into fare_supporters (fare_id, user_id, created_at) values (?, ?, ?)',
+      args: [fareId, userId, timestamp()],
+    });
+    return { result: 'ok', route: (await this.get(routeId))! };
+  }
+
   async createUser(username: string, passwordHash: string) {
-    const user = { id: randomUUID(), username, passwordHash, createdAt: new Date().toISOString() };
+    const user = { id: randomUUID(), username, passwordHash, createdAt: timestamp() };
     const { rowsAffected } = await this.db.execute({
       sql: 'insert or ignore into users (id, username, password_hash, created_at) values (?, ?, ?, ?)',
       args: [user.id, user.username, user.passwordHash, user.createdAt],
@@ -246,6 +370,11 @@ export class LibsqlStore implements RouteStore {
 
   private async get(id: string) {
     const { rows } = await this.db.execute({ sql: `${SELECT} where r.id = ?`, args: [id] });
-    return rows[0] ? toRoute(rows[0]) : null;
+    if (!rows[0]) return null;
+    const { rows: fareRows } = await this.db.execute({
+      sql: `${FARES} where f.route_id = ? order by f.created_at desc`,
+      args: [id],
+    });
+    return this.withFares([toRoute(rows[0])], fareRows)[0];
   }
 }

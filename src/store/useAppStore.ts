@@ -2,11 +2,18 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 
 import { API_URL } from '@/lib/api';
-import { confirmRoute, fetchCommunityRoutes, reportRoute } from '@/lib/community';
+import {
+  backFare,
+  confirmRoute,
+  fetchCommunityRoutes,
+  proposeFare,
+  reportRoute,
+} from '@/lib/community';
 import { getBundledRoutes, landmarks } from '@/lib/dataSource';
 import { planTrips } from '@/lib/planner';
 import type {
   DiscountType,
+  FareRule,
   LngLat,
   PlaceLabel,
   ReportReason,
@@ -38,6 +45,8 @@ interface AppState {
   communityStatus: CommunityStatus;
   /** Votes the logged-in user cast this session, by route ID. */
   myVotes: Record<string, Vote>;
+  /** Fare proposals the logged-in user proposed or backed this session. */
+  backedFareIds: string[];
   origin: Place | null;
   destination: Place | null;
   pickTarget: PickTarget;
@@ -56,6 +65,8 @@ interface AppState {
   upsertCommunityRoute: (r: TransitRoute) => void;
   confirmCommunityRoute: (id: string) => Promise<void>;
   reportCommunityRoute: (id: string, reason: ReportReason) => Promise<void>;
+  proposeRouteFare: (id: string, fare: FareRule) => Promise<void>;
+  backRouteFare: (id: string, fareId: string) => Promise<void>;
   setPlace: (target: PickTarget, place: Place | null) => void;
   setPickTarget: (t: PickTarget) => void;
   swapPlaces: () => void;
@@ -102,6 +113,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   communityRoutes: [],
   communityStatus: API_URL ? 'idle' : 'disabled',
   myVotes: {},
+  backedFareIds: [],
   origin: null,
   destination: null,
   pickTarget: 'destination',
@@ -124,8 +136,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   upsertCommunityRoute: (route) => {
-    const others = get().communityRoutes.filter((r) => r.properties.id !== route.properties.id);
-    const communityRoutes = [route, ...others];
+    // Votes and fares update a route in place; new routes go first.
+    const current = get().communityRoutes;
+    const exists = current.some((r) => r.properties.id === route.properties.id);
+    const communityRoutes = exists
+      ? current.map((r) => (r.properties.id === route.properties.id ? route : r))
+      : [route, ...current];
     set({ communityRoutes, ...replan({ ...get(), communityRoutes }) });
   },
   confirmCommunityRoute: async (id) => {
@@ -137,6 +153,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     const route = await reportRoute(id, reason);
     get().upsertCommunityRoute(route);
     set({ myVotes: { ...get().myVotes, [id]: reason } });
+  },
+  proposeRouteFare: async (id, fare) => {
+    const route = await proposeFare(id, fare);
+    get().upsertCommunityRoute(route);
+    const proposed = route.properties.pendingFare?.id ?? route.properties.fare?.id;
+    if (proposed) set({ backedFareIds: [...get().backedFareIds, proposed] });
+  },
+  backRouteFare: async (id, fareId) => {
+    const route = await backFare(id, fareId);
+    get().upsertCommunityRoute(route);
+    set({ backedFareIds: [...get().backedFareIds, fareId] });
   },
   setPlace: (target, place) => {
     const next = { ...get(), [target]: place };

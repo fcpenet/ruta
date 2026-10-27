@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { RouteFare } from '@/components/route-fare';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -138,25 +139,23 @@ function RouteCard({ route, onPress }: { route: TransitRoute; onPress: () => voi
   const p = route.properties;
   const km = lengthKm(route.geometry.coordinates as LngLat[]);
   const community = p.source === 'community';
+  // Only the title and the link open the map: the card also holds buttons and fare inputs.
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityHint={t.routes.showOnMapHint}
-      style={({ pressed }) => [
-        styles.card,
-        { borderColor: theme.border, borderLeftColor: p.color },
-        pressed && styles.pressed,
-      ]}>
-      <View style={styles.cardTop}>
+    <View style={[styles.card, { borderColor: theme.border, borderLeftColor: p.color }]}>
+      <Pressable
+        onPress={onPress}
+        accessibilityHint={t.routes.showOnMapHint}
+        style={({ pressed }) => [styles.cardTop, pressed && styles.pressed]}>
         <ThemedText type="smallBold" style={styles.cardTitle}>
           {p.name}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {t.routes.types[p.type]}
         </ThemedText>
-      </View>
+      </Pressable>
       {community && <CommunityBadge route={route} />}
       {p.signboard ? <ThemedText type="small">{t.routes.signboard(p.signboard)}</ThemedText> : null}
+      <RouteFare route={route} editable={community} />
       <ThemedText type="small" themeColor="textSecondary">
         {p.loadingPoints.map((l) => l.name).join(' → ')}
       </ThemedText>
@@ -170,10 +169,16 @@ function RouteCard({ route, onPress }: { route: TransitRoute; onPress: () => voi
           .filter(Boolean)
           .join(' · ')}
       </ThemedText>
-      <ThemedText type="small" style={{ color: theme.accent }}>
-        {t.routes.showOnMap}
-      </ThemedText>
-    </Pressable>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="link"
+        accessibilityHint={t.routes.showOnMapHint}
+        style={({ pressed }) => [styles.mapLink, pressed && styles.pressed]}>
+        <ThemedText type="small" style={{ color: theme.accent }}>
+          {t.routes.showOnMap}
+        </ThemedText>
+      </Pressable>
+    </View>
   );
 }
 
@@ -200,7 +205,12 @@ function AccountRow() {
 
 const REPORT_REASONS: ReportReason[] = ['wrong_path', 'not_running', 'spam'];
 
-const BADGE_COLORS = { verified: '#1A7F37', unverified: '#9A6700', disputed: '#CF222E' };
+const BADGE_COLORS = {
+  verified: '#1A7F37',
+  unverified: '#9A6700',
+  disputed: '#CF222E',
+  unavailable: '#57606A',
+};
 
 function CommunityBadge({ route }: { route: TransitRoute }) {
   const theme = useTheme();
@@ -247,6 +257,12 @@ function CommunityBadge({ route }: { route: TransitRoute }) {
           {t.routes.counts(p.confirmations ?? 0, p.reports ?? 0)}
         </ThemedText>
       </View>
+
+      {status === 'unavailable' && vote !== 'confirmed' && (
+        <ThemedText type="small" themeColor="textSecondary">
+          {t.routes.unavailableHint}
+        </ThemedText>
+      )}
 
       {vote && (
         <ThemedText type="small" style={{ color: theme.accent }}>
@@ -389,6 +405,7 @@ const styles = StyleSheet.create({
   },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   cardTitle: { flex: 1 },
+  mapLink: { alignSelf: 'flex-start' },
   pressed: { opacity: 0.7 },
   attribution: { marginTop: Spacing.three },
 });

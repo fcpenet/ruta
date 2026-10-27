@@ -76,6 +76,18 @@ export const directionsQuerySchema = z.object({
     .pipe(z.array(lngLat).min(2).max(100)),
 });
 
+/** A route's own fare: one amount for any distance, or a base for the first km then per km. */
+export const fareSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('flat'), amount: z.number().positive().max(1000) }),
+  z.object({
+    kind: z.literal('distance'),
+    base: z.number().positive().max(1000),
+    baseKm: z.number().min(0).max(50),
+    perKm: z.number().min(0).max(200),
+  }),
+]);
+export type Fare = z.infer<typeof fareSchema>;
+
 export const REPORT_REASONS = ['wrong_path', 'not_running', 'spam'] as const;
 export const reportSchema = z.object({ reason: z.enum(REPORT_REASONS) });
 export type ReportReason = (typeof REPORT_REASONS)[number];

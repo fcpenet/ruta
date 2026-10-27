@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
-import { createApp, DISPUTE_MARGIN, VERIFY_THRESHOLD, type AppOptions } from './app.ts';
+import {
+  createApp,
+  DISPUTE_MARGIN,
+  FARE_SUPPORTERS,
+  UNAVAILABLE_REPORTS,
+  VERIFY_THRESHOLD,
+  type AppOptions,
+} from './app.ts';
 import { LibsqlStore } from './libsql-store.ts';
 import { MemoryStore, type RouteStore } from './store.ts';
 
@@ -220,6 +227,77 @@ for (const [name, makeStore] of stores) {
       await report(fan, 'spam');
       p = (await (await confirm(fan)).json()).route.properties;
       assert.deepEqual([p.confirmations, p.reports, p.status], [1, DISPUTE_MARGIN, 'unverified']);
+    });
+
+    it('marks a well-confirmed route unavailable after fresh "not running" reports, until someone rides it', async () => {
+      const api = client(t.store);
+      const { route: created } = await (await api.post('/routes', route, await api.user())).json();
+      const id = created.properties.id;
+      const riders = [];
+      for (let i = 0; i < VERIFY_THRESHOLD + 3; i++) {
+        const rider = await api.user();
+        riders.push(rider);
+        await api.post(`/routes/${id}/confirm`, {}, rider);
+      }
+      const status = async () => (await (await api.get('/routes')).json()).routes[0].properties.status;
+      assert.equal(await status(), 'verified');
+
+      // Other reasons don't retire a route; only "not running" since the last ride does.
+      await api.post(`/routes/${id}/report`, { reason: 'wrong_path' }, await api.user());
+      for (let i = 0; i < UNAVAILABLE_REPORTS; i++) {
+        await api.post(`/routes/${id}/report`, { reason: 'not_running' }, await api.user());
+      }
+      assert.equal(await status(), 'unavailable');
+
+      // A rider confirming again today brings it back.
+      await api.post(`/routes/${id}/confirm`, {}, riders[0]);
+      assert.equal(await status(), 'verified');
+    });
+
+    it('takes a proposed fare once enough commuters back it, and keeps it until a newer one is', async () => {
+      const api = client(t.store);
+      const { route: created } = await (await api.post('/routes', route, await api.user())).json();
+      const id = created.properties.id;
+      const props = async () => (await (await api.get('/routes')).json()).routes[0].properties;
+
+      const proposer = await api.user();
+      const res = await api.post(`/routes/${id}/fares`, { kind: 'flat', amount: 20 }, proposer);
+      assert.equal(res.status, 201);
+      let p = await props();
+      assert.equal(p.fare, undefined);
+      assert.deepEqual([p.pendingFare.amount, p.pendingFare.supporters], [20, 1]);
+      const firstId = p.pendingFare.id;
+
+      // Backing twice counts once; FARE_SUPPORTERS distinct backers make it the route's fare.
+      await api.post(`/routes/${id}/fares/${firstId}/confirm`, {}, proposer);
+      assert.equal((await props()).pendingFare.supporters, 1);
+      for (let i = 1; i < FARE_SUPPORTERS; i++) {
+        await api.post(`/routes/${id}/fares/${firstId}/confirm`, {}, await api.user());
+      }
+      p = await props();
+      assert.deepEqual([p.fare.kind, p.fare.amount, p.pendingFare], ['flat', 20, undefined]);
+
+      // A fare increase stays pending until backed; the old fare applies meanwhile.
+      const increase = { kind: 'distance', base: 15, baseKm: 4, perKm: 2.5 };
+      await api.post(`/routes/${id}/fares`, increase, await api.user());
+      p = await props();
+      assert.equal(p.fare.amount, 20);
+      assert.equal(p.pendingFare.base, 15);
+      await api.post(`/routes/${id}/fares/${p.pendingFare.id}/confirm`, {}, await api.user());
+      p = await props();
+      assert.deepEqual([p.fare.kind, p.fare.base, p.fare.perKm, p.pendingFare], ['distance', 15, 2.5, undefined]);
+    });
+
+    it('validates fares and fare ids', async () => {
+      const api = client(t.store);
+      const token = await api.user();
+      const { route: created } = await (await api.post('/routes', route, token)).json();
+      const id = created.properties.id;
+      assert.equal((await api.post(`/routes/${id}/fares`, { kind: 'flat', amount: 20 })).status, 401);
+      assert.equal((await api.post(`/routes/${id}/fares`, { kind: 'flat', amount: -5 }, token)).status, 400);
+      assert.equal((await api.post(`/routes/${id}/fares`, { kind: 'distance', base: 13 }, token)).status, 400);
+      assert.equal((await api.post(`/routes/${randomUUID()}/fares`, { kind: 'flat', amount: 20 }, token)).status, 404);
+      assert.equal((await api.post(`/routes/${id}/fares/${randomUUID()}/confirm`, {}, token)).status, 404);
     });
 
     it('validates reports and lets authors report their own route', async () => {

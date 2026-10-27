@@ -13,17 +13,43 @@ import {
   verifyPassword,
 } from './auth.ts';
 import { DirectionsUnavailable, type Directions } from './directions.ts';
-import { directionsQuerySchema, newRouteSchema, reportSchema, routeIdSchema } from './schema.ts';
-import type { PublicUser, RouteStore, StoredRoute } from './store.ts';
+import {
+  directionsQuerySchema,
+  fareSchema,
+  newRouteSchema,
+  reportSchema,
+  routeIdSchema,
+} from './schema.ts';
+import type { PublicUser, RouteStore, StoredFare, StoredRoute } from './store.ts';
 
 /** Confirmations from other users needed before a community route shows as verified. */
 export const VERIFY_THRESHOLD = 3;
 /** A route is disputed once reports outnumber confirmations by this much; the app stops suggesting it. */
 export const DISPUTE_MARGIN = 2;
+/**
+ * "Not running" reports since anyone last confirmed riding it that mark a route unavailable,
+ * however many older confirmations it has. A fresh confirmation brings it back.
+ */
+export const UNAVAILABLE_REPORTS = 2;
+/** Backers (the proposer included) a proposed fare needs before it replaces the route's fare. */
+export const FARE_SUPPORTERS = 2;
 
-export function routeStatus(r: Pick<StoredRoute, 'confirmations' | 'reports'>) {
+export function routeStatus(r: Pick<StoredRoute, 'confirmations' | 'reports' | 'freshNotRunning'>) {
+  if (r.freshNotRunning >= UNAVAILABLE_REPORTS) return 'unavailable' as const;
   if (r.reports - r.confirmations >= DISPUTE_MARGIN) return 'disputed' as const;
   return r.confirmations >= VERIFY_THRESHOLD ? ('verified' as const) : ('unverified' as const);
+}
+
+/**
+ * The route's fare is its newest proposal with enough backers; a newer proposal still
+ * gathering backers is pending.
+ */
+export function routeFares(fares: StoredFare[]) {
+  const accepted = fares.find((f) => f.supporters >= FARE_SUPPORTERS);
+  const pending = fares.find(
+    (f) => f.supporters < FARE_SUPPORTERS && (!accepted || f.createdAt > accepted.createdAt)
+  );
+  return { fare: accepted, pendingFare: pending };
 }
 
 const PALETTE = ['#D1495B', '#EDAE49', '#00798C', '#30638E', '#8F2D56', '#3D7068', '#E26D5C', '#5C4D7D'];
@@ -65,6 +91,7 @@ export function toFeature(r: StoredRoute) {
       confirmations: r.confirmations,
       reports: r.reports,
       status: routeStatus(r),
+      ...routeFares(r.fares),
       createdAt: r.createdAt,
     },
     geometry: { type: 'LineString' as const, coordinates: r.coordinates },
@@ -195,6 +222,7 @@ export function createApp(store: RouteStore, opts: AppOptions = {}) {
     return c.json({
       verifyThreshold: VERIFY_THRESHOLD,
       disputeMargin: DISPUTE_MARGIN,
+      fareSupporters: FARE_SUPPORTERS,
       routes: routes.map(toFeature),
     });
   });
@@ -225,6 +253,31 @@ export function createApp(store: RouteStore, opts: AppOptions = {}) {
     const { result, route } = await store.confirm(id, user.id);
     if (result === 'not_found') return c.json({ error: 'Route not found' }, 404);
     if (result === 'own_route') return c.json({ error: 'You can’t confirm a route you added' }, 403);
+    return c.json({ route: toFeature(route!) });
+  });
+
+  app.post('/routes/:id/fares', requireUser, async (c) => {
+    const user = c.get('user');
+    if (!allowVote(user.id)) return c.json({ error: 'Too many votes, try again later' }, 429);
+    const id = c.req.param('id');
+    if (!routeIdSchema.safeParse(id).success) return c.json({ error: 'Route not found' }, 404);
+    const parsed = fareSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json(validationError(parsed.error.issues), 400);
+
+    const { result, route } = await store.proposeFare(id, user.id, parsed.data);
+    if (result === 'not_found') return c.json({ error: 'Route not found' }, 404);
+    return c.json({ route: toFeature(route!) }, 201);
+  });
+
+  app.post('/routes/:id/fares/:fareId/confirm', requireUser, async (c) => {
+    const user = c.get('user');
+    if (!allowVote(user.id)) return c.json({ error: 'Too many votes, try again later' }, 429);
+    const { id, fareId } = c.req.param();
+    if (!routeIdSchema.safeParse(id).success || !routeIdSchema.safeParse(fareId).success) {
+      return c.json({ error: 'Fare not found' }, 404);
+    }
+    const { result, route } = await store.supportFare(id, fareId, user.id);
+    if (result === 'not_found') return c.json({ error: 'Fare not found' }, 404);
     return c.json({ route: toFeature(route!) });
   });
 

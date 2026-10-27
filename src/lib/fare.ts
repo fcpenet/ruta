@@ -1,5 +1,5 @@
 import fares from '@/data/fares.json';
-import type { DiscountType, DistanceFare, FareTable, VehicleType } from '@/types';
+import type { DiscountType, DistanceFare, FareRule, FareTable, VehicleType } from '@/types';
 
 export const fareTable = fares as FareTable;
 
@@ -15,16 +15,25 @@ export function fareRule(vehicle: VehicleType, city?: string): DistanceFare {
   return fareTable[vehicle];
 }
 
-/** Base fare covers `baseKm`; every started km after that adds `perKm`. */
+/**
+ * Base fare covers `baseKm`; every started km after that adds `perKm`. A route's own fare
+ * (`routeFare`, agreed by commuters) replaces the standard table.
+ */
 export function computeFare(
   vehicle: VehicleType,
   km: number,
   discount: DiscountType = 'regular',
-  city?: string
+  city?: string,
+  routeFare?: FareRule
 ): number {
-  const rule = fareRule(vehicle, city);
-  const extraKm = Math.max(0, Math.ceil(km - rule.baseKm - 1e-9));
-  const regular = rule.base + extraKm * rule.perKm;
+  let regular: number;
+  if (routeFare?.kind === 'flat') {
+    regular = routeFare.amount;
+  } else {
+    const rule = routeFare ?? fareRule(vehicle, city);
+    const extraKm = Math.max(0, Math.ceil(km - rule.baseKm - 1e-9));
+    regular = rule.base + extraKm * rule.perKm;
+  }
   const rate = discount === 'regular' ? 1 : 1 - fareTable.discountRate;
   return roundToQuarter(regular * rate);
 }

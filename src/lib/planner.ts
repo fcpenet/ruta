@@ -94,9 +94,9 @@ export function planTrips(origin: LngLat, destination: LngLat, opts: PlanOptions
     maxResults = 5,
   } = opts;
 
-  // Commuters reported disputed routes as wrong or no longer running.
+  // Commuters reported these as wrong or no longer running.
   const segments: Segment[] = routes
-    .filter((r) => r.properties.status !== 'disputed')
+    .filter((r) => r.properties.status !== 'disputed' && r.properties.status !== 'unavailable')
     .map((route) => {
       const coords = route.geometry.coordinates as LngLat[];
       return { route, coords, walk: route.properties.type === 'walk', bbox: bboxOf(coords) };
@@ -341,7 +341,7 @@ function rideLeg(route: TransitRoute, ride: Ride, ctx: LegContext): RideLeg {
     alightName: placeName(alight, ctx.landmarks, route),
     km: ride.km,
     minutes: (ride.km / SPEED_KMH[vehicle]) * 60 * traffic.multiplier,
-    fare: computeFare(vehicle, ride.km, ctx.discount, p.city),
+    fare: computeFare(vehicle, ride.km, ctx.discount, p.city, p.fare),
     path: ride.path,
     trafficLevel: traffic.level,
     unverified: p.source === 'community' && p.status !== 'verified',

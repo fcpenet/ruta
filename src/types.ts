@@ -35,10 +35,17 @@ export interface RouteProps {
   city?: string;
   /** Absent for bundled data; 'community' for routes added by commuters. */
   source?: 'official' | 'community';
-  /** 'disputed' when commuters' reports outnumber confirmations; the planner skips these. */
-  status?: 'unverified' | 'verified' | 'disputed';
+  /**
+   * 'disputed' when reports outnumber confirmations; 'unavailable' when commuters reported it
+   * not running since anyone last rode it. The planner skips both.
+   */
+  status?: 'unverified' | 'verified' | 'disputed' | 'unavailable';
   confirmations?: number;
   reports?: number;
+  /** Fare commuters agreed on for this route; replaces the standard fare table. */
+  fare?: RouteFare;
+  /** A newer fare still waiting for enough commuters to back it. */
+  pendingFare?: RouteFare;
   /** Username of the commuter who added a community route. */
   author?: string;
 }
@@ -61,6 +68,20 @@ export interface Landmark {
   aliases?: string[];
   coord: LngLat;
 }
+
+/** A fare: one amount for any distance, or `base` for the first `baseKm` then `perKm`. */
+export type FareRule =
+  | { kind: 'flat'; amount: number }
+  | { kind: 'distance'; base: number; baseKm: number; perKm: number };
+
+export type RouteFare = FareRule & {
+  id: string;
+  /** Username of the commuter who proposed it. */
+  proposedBy: string;
+  /** Commuters backing it, the proposer included. */
+  supporters: number;
+  createdAt: string;
+};
 
 export interface DistanceFare {
   base: number;

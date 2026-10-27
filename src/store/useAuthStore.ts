@@ -22,14 +22,14 @@ function clearLocal() {
   setAuthToken(null);
   writeSession(null);
   // Votes are per account.
-  useAppStore.setState({ myVotes: {} });
+  useAppStore.setState({ myVotes: {}, backedFareIds: [] });
   useAuthStore.setState({ status: 'signedOut', user: null });
 }
 
 async function start(session: Session) {
   setAuthToken(session.token);
   await writeSession(JSON.stringify(session));
-  useAppStore.setState({ myVotes: {} });
+  useAppStore.setState({ myVotes: {}, backedFareIds: [] });
   useAuthStore.setState({ status: 'signedIn', user: session.user });
 }
 

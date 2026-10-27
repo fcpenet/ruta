@@ -169,6 +169,25 @@ describe('planTrips', () => {
       expect(rides(trip.legs).map((r) => r.routeId)).toEqual(['jeep-a', 'jeep-b']);
     });
 
+    it('skips routes reported as no longer running and prices with the route’s agreed fare', () => {
+      const link = make('footbridge', 'walk', [
+        [121.0799, 14.5701],
+        [121.0799, 14.5749],
+      ]);
+      const gone = { ...jeepB, properties: { ...jeepB.properties, status: 'unavailable' as const } };
+      expect(planTrips(origin, destination, { routes: [jeepA, gone, link], landmarks: [], at })).toEqual([]);
+
+      const flat = {
+        ...jeepB,
+        properties: {
+          ...jeepB.properties,
+          fare: { kind: 'flat' as const, amount: 30, id: 'f1', proposedBy: 'x', supporters: 2, createdAt: '' },
+        },
+      };
+      const [trip] = planTrips(origin, destination, { routes: [jeepA, flat, link], landmarks: [], at });
+      expect(rides(trip.legs).find((r) => r.routeId === 'jeep-b')!.fare).toBe(30);
+    });
+
     it('ignores disputed walk links', () => {
       const link = make('footbridge', 'walk', [
         [121.0799, 14.5701],

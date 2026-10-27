@@ -52,8 +52,18 @@ Node 24 + Hono + Turso (libSQL). Username + password accounts: passwords are has
 | POST | `/routes` | ✓ | Submit a route (validated: inside PH, ≥2 points, ≤5 km between points) |
 | POST | `/routes/:id/confirm` | ✓ | Confirm a route (not your own; once per user) |
 | POST | `/routes/:id/report` | ✓ | `{reason: "wrong_path" \| "not_running" \| "spam"}`; replaces your confirmation if any |
+| POST | `/routes/:id/fares` | ✓ | Propose a fare: `{kind: "flat", amount}` or `{kind: "distance", base, baseKm, perKm}` |
+| POST | `/routes/:id/fares/:fareId/confirm` | ✓ | Back a proposed fare (once per user) |
 
-Each user has one vote per route: a confirmation or a report. `status` is `disputed` when reports − confirmations ≥ 2 (the app stops suggesting it in trips), else `verified` at ≥3 confirmations, else `unverified`.
+Each user has one vote per route: a confirmation or a report; voting again refreshes its date. `status`, first match wins:
+
+- `unavailable`: ≥2 "not running" reports since the latest confirmation, however many older confirmations there are. Anyone confirming again brings it back.
+- `disputed`: reports − confirmations ≥ 2.
+- `verified`: ≥3 confirmations; otherwise `unverified`.
+
+The app stops suggesting `unavailable` and `disputed` routes in trips.
+
+Fares: a route's `fare` is its newest proposal backed by ≥2 users (the proposer counts); a newer proposal still short of that is `pendingFare`. Without a `fare`, the app uses the standard fare table (`src/data/fares.json`).
 
 There's no password reset yet; forgotten passwords mean a new account.
 
