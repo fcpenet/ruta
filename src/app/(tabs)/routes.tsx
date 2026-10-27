@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { ApiError } from '@/lib/api';
+import { apiErrorText, useT } from '@/i18n';
 import { lengthKm } from '@/lib/geo';
 import { useAllRoutes, useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -15,24 +15,11 @@ import type { LngLat, ReportReason, RouteType, TransitRoute } from '@/types';
 
 type Filter = 'all' | 'community' | RouteType;
 
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: 'all', label: 'Lahat' },
-  { value: 'jeep', label: 'Jeep' },
-  { value: 'modern_jeep', label: 'Modern jeep' },
-  { value: 'tricycle', label: 'Tricycle' },
-  { value: 'walk', label: 'Lakad' },
-  { value: 'community', label: 'Community' },
-];
-
-const TYPE_LABEL: Record<RouteType, string> = {
-  jeep: 'Jeep',
-  modern_jeep: 'Modern jeep',
-  tricycle: 'Tricycle',
-  walk: 'Lakad (walk link)',
-};
+const FILTERS: Filter[] = ['all', 'jeep', 'modern_jeep', 'tricycle', 'walk', 'community'];
 
 export default function RoutesScreen() {
   const theme = useTheme();
+  const t = useT();
   const dataset = useAppStore((s) => s.dataset);
   const allRoutes = useAllRoutes();
   const communityStatus = useAppStore((s) => s.communityStatus);
@@ -66,7 +53,7 @@ export default function RoutesScreen() {
         <View style={styles.header}>
           <View style={styles.titleRow}>
             <ThemedText type="subtitle" style={styles.title}>
-              Mga ruta
+              {t.routes.title}
             </ThemedText>
             {communityStatus !== 'disabled' && (
               <Pressable
@@ -78,37 +65,37 @@ export default function RoutesScreen() {
                 accessibilityRole="button"
                 style={[styles.addButton, { backgroundColor: theme.accent }]}>
                 <ThemedText type="smallBold" style={{ color: theme.accentText }}>
-                  + Add route
+                  {t.routes.add}
                 </ThemedText>
               </Pressable>
             )}
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            {dataset.region} · data v{dataset.version}, updated {dataset.updatedAt}
+            {t.routes.dataInfo(dataset.region, dataset.version, dataset.updatedAt)}
           </ThemedText>
           {communityStatus !== 'disabled' && <AccountRow />}
           {communityStatus === 'loading' && <ActivityIndicator style={styles.status} />}
           {communityStatus === 'error' && (
             <Pressable onPress={loadCommunityRoutes}>
               <ThemedText type="small" style={styles.errorText}>
-                Couldn’t load community routes. Tap to retry.
+                {t.routes.loadError}
               </ThemedText>
             </Pressable>
           )}
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Hanapin: Cubao, Quiapo, UP Ikot…"
+            placeholder={t.routes.searchPlaceholder}
             placeholderTextColor={theme.textSecondary}
             style={[styles.search, { borderColor: theme.border, color: theme.text }]}
           />
           <View style={styles.filters}>
             {FILTERS.map((f) => {
-              const active = f.value === filter;
+              const active = f === filter;
               return (
                 <Pressable
-                  key={f.value}
-                  onPress={() => setFilter(f.value)}
+                  key={f}
+                  onPress={() => setFilter(f)}
                   accessibilityState={{ selected: active }}
                   style={[
                     styles.filter,
@@ -116,7 +103,7 @@ export default function RoutesScreen() {
                     active && { backgroundColor: theme.accent },
                   ]}>
                   <ThemedText type="small" style={{ color: active ? theme.accentText : theme.text }}>
-                    {f.label}
+                    {t.routes.filters[f]}
                   </ThemedText>
                 </Pressable>
               );
@@ -130,7 +117,7 @@ export default function RoutesScreen() {
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <ThemedText type="small" themeColor="textSecondary">
-              Walang tugma. Try another name or filter.
+              {t.routes.empty}
             </ThemedText>
           }
           ListFooterComponent={
@@ -147,13 +134,14 @@ export default function RoutesScreen() {
 
 function RouteCard({ route, onPress }: { route: TransitRoute; onPress: () => void }) {
   const theme = useTheme();
+  const t = useT();
   const p = route.properties;
   const km = lengthKm(route.geometry.coordinates as LngLat[]);
   const community = p.source === 'community';
   return (
     <Pressable
       onPress={onPress}
-      accessibilityHint="Shows this route on the map"
+      accessibilityHint={t.routes.showOnMapHint}
       style={({ pressed }) => [
         styles.card,
         { borderColor: theme.border, borderLeftColor: p.color },
@@ -164,28 +152,26 @@ function RouteCard({ route, onPress }: { route: TransitRoute; onPress: () => voi
           {p.name}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          {TYPE_LABEL[p.type]}
+          {t.routes.types[p.type]}
         </ThemedText>
       </View>
       {community && <CommunityBadge route={route} />}
-      {p.signboard ? <ThemedText type="small">Karatula: “{p.signboard}”</ThemedText> : null}
+      {p.signboard ? <ThemedText type="small">{t.routes.signboard(p.signboard)}</ThemedText> : null}
       <ThemedText type="small" themeColor="textSecondary">
         {p.loadingPoints.map((l) => l.name).join(' → ')}
       </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {[
           `${km.toFixed(1)} km`,
-          p.type === 'walk' ? null : p.direction === 'oneway' ? 'one way' : 'both ways',
+          p.type === 'walk' ? null : p.direction === 'oneway' ? t.routes.oneWay : t.routes.bothWays,
           p.operatingHours,
-          community
-            ? `added ${p.lastVerified}${p.author ? ` by @${p.author}` : ''}`
-            : `checked ${p.lastVerified}`,
+          community ? t.routes.added(p.lastVerified, p.author) : t.routes.checked(p.lastVerified),
         ]
           .filter(Boolean)
           .join(' · ')}
       </ThemedText>
       <ThemedText type="small" style={{ color: theme.accent }}>
-        Ipakita sa mapa →
+        {t.routes.showOnMap}
       </ThemedText>
     </Pressable>
   );
@@ -193,6 +179,7 @@ function RouteCard({ route, onPress }: { route: TransitRoute; onPress: () => voi
 
 function AccountRow() {
   const theme = useTheme();
+  const t = useT();
   const user = useAuthStore((s) => s.user);
   const status = useAuthStore((s) => s.status);
   const logOut = useAuthStore((s) => s.logOut);
@@ -200,31 +187,24 @@ function AccountRow() {
   return (
     <View style={styles.accountRow}>
       <ThemedText type="small" themeColor="textSecondary">
-        {user ? `Logged in as @${user.username}` : 'Log in to add or confirm routes.'}
+        {user ? t.routes.account.loggedInAs(user.username) : t.routes.account.prompt}
       </ThemedText>
       <Pressable onPress={user ? logOut : () => router.push('/sign-in')} accessibilityRole="button">
         <ThemedText type="smallBold" style={{ color: theme.accent }}>
-          {user ? 'Log out' : 'Log in / Sign up'}
+          {user ? t.routes.account.logOut : t.routes.account.logIn}
         </ThemedText>
       </Pressable>
     </View>
   );
 }
 
-const REPORT_REASONS: { value: ReportReason; label: string }[] = [
-  { value: 'wrong_path', label: 'Maling daan (wrong path)' },
-  { value: 'not_running', label: 'Wala na (not running)' },
-  { value: 'spam', label: 'Spam / fake' },
-];
+const REPORT_REASONS: ReportReason[] = ['wrong_path', 'not_running', 'spam'];
 
-const BADGES = {
-  verified: { color: '#1A7F37', label: '✓ Verified by commuters' },
-  unverified: { color: '#9A6700', label: '⚠ Unverified · added by a commuter' },
-  disputed: { color: '#CF222E', label: '✕ Disputed · reported by commuters' },
-};
+const BADGE_COLORS = { verified: '#1A7F37', unverified: '#9A6700', disputed: '#CF222E' };
 
 function CommunityBadge({ route }: { route: TransitRoute }) {
   const theme = useTheme();
+  const t = useT();
   const p = route.properties;
   const user = useAuthStore((s) => s.user);
   const own = !!user && p.author === user.username;
@@ -234,7 +214,7 @@ function CommunityBadge({ route }: { route: TransitRoute }) {
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const badge = BADGES[p.status ?? 'unverified'];
+  const status = p.status ?? 'unverified';
 
   const run = async (action: () => Promise<void>) => {
     if (!user) {
@@ -247,61 +227,64 @@ function CommunityBadge({ route }: { route: TransitRoute }) {
       await action();
       setPicking(false);
     } catch (e) {
-      setMessage(e instanceof ApiError ? e.message : 'Couldn’t send. Try again.');
+      setMessage(apiErrorText(e, t, t.routes.voteFailed));
     } finally {
       setBusy(false);
     }
   };
 
   const reported = vote && vote !== 'confirmed';
-  const reasonLabel = REPORT_REASONS.find((r) => r.value === vote)?.label;
 
   return (
     <View style={styles.badgeBlock}>
       <View style={styles.badgeRow}>
-        <View style={[styles.badge, { backgroundColor: badge.color }]}>
+        <View style={[styles.badge, { backgroundColor: BADGE_COLORS[status] }]}>
           <ThemedText type="small" style={styles.badgeText}>
-            {badge.label}
+            {t.routes.badges[status]}
           </ThemedText>
         </View>
         <ThemedText type="small" themeColor="textSecondary">
-          {p.confirmations ?? 0} confirmed · {p.reports ?? 0} reported
+          {t.routes.counts(p.confirmations ?? 0, p.reports ?? 0)}
         </ThemedText>
       </View>
 
       {vote && (
         <ThemedText type="small" style={{ color: theme.accent }}>
-          {reported ? `Salamat! You reported: ${reasonLabel}.` : 'Salamat sa pag-confirm!'}
+          {reported ? t.routes.thanksReport(t.routes.reasons[vote]) : t.routes.thanksConfirm}
         </ThemedText>
       )}
 
       {picking ? (
         <View style={styles.badgeRow}>
           <ThemedText type="small" themeColor="textSecondary">
-            Ano ang mali?
+            {t.routes.whatsWrong}
           </ThemedText>
-          {REPORT_REASONS.map((r) => (
+          {REPORT_REASONS.map((reason) => (
             <VoteButton
-              key={r.value}
-              label={r.label}
+              key={reason}
+              label={t.routes.reasons[reason]}
               color="#CF222E"
               disabled={busy}
-              onPress={() => run(() => reportCommunityRoute(p.id, r.value))}
+              onPress={() => run(() => reportCommunityRoute(p.id, reason))}
             />
           ))}
-          <VoteButton label="Cancel" color={theme.textSecondary} onPress={() => setPicking(false)} />
+          <VoteButton
+            label={t.common.cancel}
+            color={theme.textSecondary}
+            onPress={() => setPicking(false)}
+          />
         </View>
       ) : (
         <View style={styles.badgeRow}>
           {own ? (
             <ThemedText type="small" themeColor="textSecondary">
-              You added this
+              {t.routes.youAdded}
             </ThemedText>
           ) : (
             vote !== 'confirmed' && (
               <VoteButton
-                label={busy ? '…' : 'Nasakyan ko ’to ✓'}
-                hint="Confirm you have ridden this route"
+                label={busy ? '…' : t.routes.confirm}
+                hint={t.routes.confirmHint}
                 color={theme.accent}
                 disabled={busy}
                 onPress={() => run(() => confirmCommunityRoute(p.id))}
@@ -309,8 +292,8 @@ function CommunityBadge({ route }: { route: TransitRoute }) {
             )
           )}
           <VoteButton
-            label={reported ? 'Change report' : 'Mali ’to'}
-            hint="Report this route as wrong, not running, or fake"
+            label={reported ? t.routes.changeReport : t.routes.report}
+            hint={t.routes.reportHint}
             color="#CF222E"
             disabled={busy}
             onPress={() => (user ? setPicking(true) : router.push('/sign-in'))}

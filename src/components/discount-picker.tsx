@@ -3,36 +3,33 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { useAppStore } from '@/store/useAppStore';
 import type { DiscountType } from '@/types';
 
-const OPTIONS: { value: DiscountType; label: string }[] = [
-  { value: 'regular', label: 'Regular' },
-  { value: 'student', label: 'Student' },
-  { value: 'senior', label: 'Senior' },
-  { value: 'pwd', label: 'PWD' },
-];
+const OPTIONS: DiscountType[] = ['regular', 'student', 'senior', 'pwd'];
 
 export function DiscountPicker() {
   const theme = useTheme();
+  const t = useT();
   const discount = useAppStore((s) => s.discount);
   const setDiscount = useAppStore((s) => s.setDiscount);
 
   return (
     <View style={[styles.row, { borderColor: theme.border }]} accessibilityRole="radiogroup">
-      {OPTIONS.map((o) => {
-        const active = o.value === discount;
+      {OPTIONS.map((value) => {
+        const active = value === discount;
         return (
           <Pressable
-            key={o.value}
+            key={value}
             accessibilityRole="radio"
             accessibilityState={{ checked: active }}
-            onPress={() => setDiscount(o.value)}
+            onPress={() => setDiscount(value)}
             style={[styles.option, active && { backgroundColor: theme.accent }]}>
             <ThemedText
               type="smallBold"
               style={{ color: active ? theme.accentText : theme.textSecondary }}>
-              {o.label}
+              {t.fares.discounts[value]}
             </ThemedText>
           </Pressable>
         );

@@ -5,12 +5,21 @@ import { API_URL } from '@/lib/api';
 import { confirmRoute, fetchCommunityRoutes, reportRoute } from '@/lib/community';
 import { getBundledRoutes, landmarks } from '@/lib/dataSource';
 import { planTrips } from '@/lib/planner';
-import type { DiscountType, LngLat, ReportReason, RouteDataset, TransitRoute, Trip } from '@/types';
+import type {
+  DiscountType,
+  LngLat,
+  PlaceLabel,
+  ReportReason,
+  RouteDataset,
+  TransitRoute,
+  Trip,
+} from '@/types';
 
-export interface Place {
-  name: string;
-  coord: LngLat;
-}
+/** A trip end. Pins and "my location" are worded in the UI's language when shown. */
+export type Place =
+  | { kind: 'landmark'; name: string; coord: LngLat }
+  | { kind: 'pin'; near: PlaceLabel; coord: LngLat }
+  | { kind: 'myLocation'; coord: LngLat };
 
 export type PickTarget = 'origin' | 'destination';
 

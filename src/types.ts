@@ -9,6 +9,12 @@ export type RouteType = VehicleType | 'walk';
 
 export type DiscountType = 'regular' | 'student' | 'senior' | 'pwd';
 
+/**
+ * A point named after the closest landmark or loading point: at it, or near it.
+ * null when nothing named is close. Turned into words per language by the UI.
+ */
+export type PlaceLabel = { name: string; near: boolean } | null;
+
 export interface LoadingPoint {
   name: string;
   coord: LngLat;
@@ -91,7 +97,7 @@ export interface WalkLeg {
   to: LngLat;
   meters: number;
   minutes: number;
-  toName: string;
+  toName: PlaceLabel;
   /** Set when walking along a commuter-drawn walk link; otherwise a straight-line estimate. */
   link?: { id: string; name: string; path: LngLat[]; unverified: boolean };
 }
@@ -105,8 +111,8 @@ export interface RideLeg {
   color: string;
   board: LngLat;
   alight: LngLat;
-  boardName: string;
-  alightName: string;
+  boardName: PlaceLabel;
+  alightName: PlaceLabel;
   km: number;
   minutes: number;
   fare: number;

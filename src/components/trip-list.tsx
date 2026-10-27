@@ -1,30 +1,14 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { RichText } from '@/components/rich-text';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { formatPeso } from '@/lib/fare';
 import { TRAFFIC_COLORS } from '@/lib/traffic';
 import { useAppStore } from '@/store/useAppStore';
-import type { Leg, RideLeg, Trip, VehicleType } from '@/types';
-
-const VEHICLE_LABEL: Record<VehicleType, string> = {
-  jeep: 'jeep',
-  modern_jeep: 'modern jeep',
-  tricycle: 'tricycle',
-};
-
-const TRAFFIC_LABEL = {
-  free: 'maluwag',
-  moderate: 'medyo traffic',
-  heavy: 'traffic',
-  standstill: 'sobrang traffic',
-} as const;
-
-function minutes(m: number) {
-  const r = Math.max(1, Math.round(m));
-  return r >= 60 ? `${Math.floor(r / 60)} h ${r % 60} min` : `${r} min`;
-}
+import type { Leg, RideLeg, Trip } from '@/types';
 
 function meters(m: number) {
   return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 10) * 10} m`;
@@ -32,6 +16,7 @@ function meters(m: number) {
 
 export function TripList() {
   const theme = useTheme();
+  const t = useT();
   const trips = useAppStore((s) => s.trips);
   const origin = useAppStore((s) => s.origin);
   const destination = useAppStore((s) => s.destination);
@@ -41,7 +26,7 @@ export function TripList() {
   if (!origin || !destination) {
     return (
       <ThemedText type="small" themeColor="textSecondary">
-        Set where you’re coming from and where you’re going to see which jeep or tricycle to take.
+        {t.trip.prompt}
       </ThemedText>
     );
   }
@@ -49,10 +34,9 @@ export function TripList() {
   if (trips.length === 0) {
     return (
       <View style={styles.empty}>
-        <ThemedText type="smallBold">Walang nakitang ruta.</ThemedText>
+        <ThemedText type="smallBold">{t.trip.noneTitle}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          No route or walk link in our data connects these points yet. Try a nearby landmark, or
-          add the jeep or walk you know in the Routes tab.
+          {t.trip.noneBody}
         </ThemedText>
       </View>
     );
@@ -60,20 +44,20 @@ export function TripList() {
 
   return (
     <View style={styles.list}>
-      {trips.map((t) => {
-        const selected = t.id === selectedTripId;
+      {trips.map((trip) => {
+        const selected = trip.id === selectedTripId;
         return (
           <Pressable
-            key={t.id}
-            onPress={() => selectTrip(t.id)}
+            key={trip.id}
+            onPress={() => selectTrip(trip.id)}
             accessibilityState={{ selected }}
             style={[
               styles.card,
               { borderColor: selected ? theme.accent : theme.border },
               selected && { borderWidth: 2 },
             ]}>
-            <TripSummary trip={t} />
-            {selected && <TripSteps trip={t} />}
+            <TripSummary trip={trip} />
+            {selected && <TripSteps trip={trip} />}
           </Pressable>
         );
       })}
@@ -82,11 +66,12 @@ export function TripList() {
 }
 
 function TripSummary({ trip }: { trip: Trip }) {
+  const t = useT();
   const rides = trip.legs.filter((l): l is RideLeg => l.kind === 'ride');
   return (
     <View style={styles.summary}>
       <View style={styles.chips}>
-        {rides.length === 0 && <Chip color="#57606A" label="Lakad lang" />}
+        {rides.length === 0 && <Chip color="#57606A" label={t.trip.walkOnly} />}
         {rides.map((r, i) => (
           <View key={r.routeId + i} style={styles.chipRow}>
             {i > 0 && <ThemedText type="small">›</ThemedText>}
@@ -95,10 +80,10 @@ function TripSummary({ trip }: { trip: Trip }) {
         ))}
       </View>
       <View style={styles.summaryRight}>
-        <ThemedText type="smallBold">{minutes(trip.totalMinutes)}</ThemedText>
+        <ThemedText type="smallBold">{t.common.duration(trip.totalMinutes)}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {formatPeso(trip.totalFare)}
-          {trip.transfers > 0 ? ` · ${trip.transfers} lipat` : ''}
+          {trip.transfers > 0 ? ` · ${t.trip.transfers(trip.transfers)}` : ''}
         </ThemedText>
       </View>
     </View>
@@ -127,28 +112,20 @@ export function TripSteps({ trip }: { trip: Trip }) {
 
 function Step({ leg }: { leg: Leg }) {
   const theme = useTheme();
+  const t = useT();
   if (leg.kind === 'walk') {
     return (
       <View style={styles.step}>
         <ThemedText style={styles.stepIcon}>🚶</ThemedText>
         <View style={styles.stepBody}>
-          <ThemedText type="small">
-            Maglakad {meters(leg.meters)}
-            {leg.link ? (
-              <>
-                {' '}
-                via <ThemedText type="smallBold">{leg.link.name}</ThemedText>
-              </>
-            ) : null}{' '}
-            papunta sa {leg.toName}
-          </ThemedText>
+          <RichText type="small" parts={t.trip.walk(meters(leg.meters), leg.toName, leg.link?.name)} />
           {leg.link?.unverified && (
             <ThemedText type="small" style={styles.unverified}>
-              ⚠ Walk added by a commuter, not yet confirmed.
+              {t.trip.unverifiedWalk}
             </ThemedText>
           )}
           <ThemedText type="small" themeColor="textSecondary">
-            ~{minutes(leg.minutes)}
+            ~{t.common.duration(leg.minutes)}
           </ThemedText>
         </View>
       </View>
@@ -158,27 +135,23 @@ function Step({ leg }: { leg: Leg }) {
     <View style={styles.step}>
       <ThemedText style={styles.stepIcon}>{leg.vehicle === 'tricycle' ? '🛺' : '🚙'}</ThemedText>
       <View style={[styles.stepBody, { borderLeftColor: leg.color }, styles.rideBody]}>
-        <ThemedText type="small">
-          Sumakay ng {VEHICLE_LABEL[leg.vehicle]} sa <ThemedText type="smallBold">{leg.boardName}</ThemedText>
-        </ThemedText>
+        <RichText type="small" parts={t.trip.board(leg.vehicle, leg.boardName)} />
         <ThemedText type="small" themeColor="textSecondary">
-          Hanapin ang karatula: “{leg.signboard}”
+          {t.trip.signboard(leg.signboard)}
         </ThemedText>
         {leg.unverified && (
           <ThemedText type="small" style={styles.unverified}>
-            ⚠ Added by a commuter, not yet confirmed — double-check with the barker or driver.
+            {t.trip.unverifiedRide}
           </ThemedText>
         )}
-        <ThemedText type="small">
-          Bumaba sa <ThemedText type="smallBold">{leg.alightName}</ThemedText> — “Para po!”
-        </ThemedText>
+        <RichText type="small" parts={t.trip.alight(leg.alightName)} />
         <View style={styles.rideMeta}>
           <ThemedText type="small" themeColor="textSecondary">
-            {leg.km.toFixed(1)} km · ~{minutes(leg.minutes)} · {formatPeso(leg.fare)}
+            {leg.km.toFixed(1)} km · ~{t.common.duration(leg.minutes)} · {formatPeso(leg.fare)}
           </ThemedText>
           <View style={[styles.trafficDot, { backgroundColor: TRAFFIC_COLORS[leg.trafficLevel] }]} />
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            {TRAFFIC_LABEL[leg.trafficLevel]}
+            {t.traffic.onRide[leg.trafficLevel]}
           </ThemedText>
         </View>
       </View>

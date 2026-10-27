@@ -7,19 +7,15 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { computeFare, fareTable, formatPeso } from '@/lib/fare';
 import { useAppStore } from '@/store/useAppStore';
 
 const MATRIX_KM = [4, 5, 6, 8, 10, 12, 15, 20];
 
-const CITY_LABEL: Record<string, string> = {
-  quezon_city: 'Quezon City',
-  manila: 'Manila',
-  default: 'Other LGUs (estimate)',
-};
-
 export default function FaresScreen() {
   const theme = useTheme();
+  const t = useT();
   const discount = useAppStore((s) => s.discount);
   const [kmText, setKmText] = useState('7');
   const km = Number.parseFloat(kmText.replace(',', '.'));
@@ -29,43 +25,49 @@ export default function FaresScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView edges={['top']} style={styles.safe}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="subtitle">Pamasahe</ThemedText>
+          <ThemedText type="subtitle">{t.fares.title}</ThemedText>
           <DiscountPicker />
           <ThemedText type="small" themeColor="textSecondary">
-            Students, senior citizens and PWDs get 20% off — show your ID.
+            {t.fares.discountNote}
           </ThemedText>
 
           <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold">Fare calculator</ThemedText>
+            <ThemedText type="smallBold">{t.fares.calculator}</ThemedText>
             <View style={styles.calcRow}>
               <TextInput
                 value={kmText}
                 onChangeText={setKmText}
                 keyboardType="decimal-pad"
-                accessibilityLabel="Distance in kilometers"
+                accessibilityLabel={t.fares.distanceLabel}
                 style={[styles.kmInput, { borderColor: theme.border, color: theme.text }]}
               />
               <ThemedText type="small">km</ThemedText>
             </View>
             {validKm ? (
               <View style={styles.calcResults}>
-                <Result label="Jeep" value={computeFare('jeep', km, discount)} />
-                <Result label="Modern jeep" value={computeFare('modern_jeep', km, discount)} />
+                <Result label={t.routes.types.jeep} value={computeFare('jeep', km, discount)} />
                 <Result
-                  label="Tricycle (QC)"
+                  label={t.routes.types.modern_jeep}
+                  value={computeFare('modern_jeep', km, discount)}
+                />
+                <Result
+                  label={t.fares.tricycleQc}
                   value={computeFare('tricycle', km, discount, 'quezon_city')}
                 />
               </View>
             ) : (
               <ThemedText type="small" themeColor="textSecondary">
-                Enter a distance in km.
+                {t.fares.enterDistance}
               </ThemedText>
             )}
           </ThemedView>
 
-          <ThemedText type="smallBold">Jeepney fare matrix</ThemedText>
+          <ThemedText type="smallBold">{t.fares.matrixTitle}</ThemedText>
           <View style={[styles.table, { borderColor: theme.border }]}>
-            <Row cells={['km', 'Jeep', 'Modern jeep']} header />
+            <Row
+              cells={[t.fares.columns.km, t.routes.types.jeep, t.routes.types.modern_jeep]}
+              header
+            />
             {MATRIX_KM.map((k) => (
               <Row
                 key={k}
@@ -78,19 +80,33 @@ export default function FaresScreen() {
             ))}
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            Jeep: ₱{fareTable.jeep.base} first {fareTable.jeep.baseKm} km, +₱
-            {fareTable.jeep.perKm.toFixed(2)}/km. Modern jeep: ₱{fareTable.modern_jeep.base} first{' '}
-            {fareTable.modern_jeep.baseKm} km, +₱{fareTable.modern_jeep.perKm.toFixed(2)}/km.
+            {t.routes.types.jeep}:{' '}
+            {t.fares.jeepRule(fareTable.jeep.base, fareTable.jeep.baseKm, fareTable.jeep.perKm.toFixed(2))}
+            . {t.routes.types.modern_jeep}:{' '}
+            {t.fares.jeepRule(
+              fareTable.modern_jeep.base,
+              fareTable.modern_jeep.baseKm,
+              fareTable.modern_jeep.perKm.toFixed(2)
+            )}
+            .
           </ThemedText>
 
-          <ThemedText type="smallBold">Tricycle</ThemedText>
+          <ThemedText type="smallBold">{t.fares.tricycleTitle}</ThemedText>
           <View style={[styles.table, { borderColor: theme.border }]}>
-            <Row cells={['City', 'Base', 'Per km', 'Special']} header />
+            <Row
+              cells={[
+                t.fares.columns.city,
+                t.fares.columns.base,
+                t.fares.columns.perKm,
+                t.fares.columns.special,
+              ]}
+              header
+            />
             {Object.entries(fareTable.tricycle).map(([city, rule]) => (
               <Row
                 key={city}
                 cells={[
-                  CITY_LABEL[city] ?? city,
+                  t.fares.cities[city] ?? city,
                   `₱${rule.base} (${rule.baseKm} km)`,
                   `₱${rule.perKm}`,
                   rule.special ? `₱${rule.special}` : '—',
@@ -100,7 +116,7 @@ export default function FaresScreen() {
           </View>
 
           <ThemedText type="small" themeColor="textSecondary">
-            Effective {fareTable.effectiveDate}. {fareTable.source}
+            {t.fares.effective(fareTable.effectiveDate)} {fareTable.source}
           </ThemedText>
         </ScrollView>
       </SafeAreaView>

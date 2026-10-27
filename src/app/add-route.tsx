@@ -17,6 +17,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useSnappedPath, type SnapStatus } from '@/hooks/use-snapped-path';
 import { useTheme } from '@/hooks/use-theme';
+import { apiErrorText, useT } from '@/i18n';
 import { ApiError } from '@/lib/api';
 import { submitRoute } from '@/lib/community';
 import { landmarks } from '@/lib/dataSource';
@@ -31,28 +32,17 @@ const MAX_GAP_M = 5000;
 const MAX_WALK_KM = 2;
 const WIDE_BREAKPOINT = 900;
 
-const TYPES: { value: RouteType; label: string }[] = [
-  { value: 'jeep', label: 'Jeep' },
-  { value: 'modern_jeep', label: 'Modern jeep' },
-  { value: 'tricycle', label: 'Tricycle' },
-  { value: 'walk', label: 'Lakad (walk link)' },
-];
-
-const DIRECTIONS = [
-  { value: 'both', label: 'Balikan (both ways)' },
-  { value: 'oneway', label: 'One way lang' },
-] as const;
+const TYPES: RouteType[] = ['jeep', 'modern_jeep', 'tricycle', 'walk'];
 
 const CITIES = Object.keys(fareTable.tricycle).filter((c) => c !== 'default');
 
 /** A landmark this close to a tapped point names it; otherwise the street does. */
 const LANDMARK_NAME_M = 150;
 
-const SNAP_NOTE: Partial<Record<SnapStatus, string>> = {
-  loading: 'Following the roads…',
-  noRoad: 'No road connects these points: drawn as straight lines.',
-  unavailable: 'Road snapping is unavailable right now: drawn as straight lines.',
-};
+/** Snap states worth a note on the map. */
+const SNAP_NOTES = ['loading', 'noRoad', 'unavailable'] as const;
+const hasSnapNote = (s: SnapStatus): s is (typeof SNAP_NOTES)[number] =>
+  (SNAP_NOTES as readonly SnapStatus[]).includes(s);
 
 /** Suggested name for a tapped point: a nearby landmark, else its street. */
 function suggestName(pt: LngLat | undefined, street: string | undefined): string {
@@ -67,6 +57,7 @@ function suggestName(pt: LngLat | undefined, street: string | undefined): string
 
 export default function AddRouteScreen() {
   const theme = useTheme();
+  const t = useT();
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
   const communityStatus = useAppStore((s) => s.communityStatus);
@@ -105,9 +96,9 @@ export default function AddRouteScreen() {
   if (communityStatus === 'disabled') {
     return (
       <ThemedView style={styles.disabled}>
-        <ThemedText type="smallBold">Community routes aren’t set up yet.</ThemedText>
+        <ThemedText type="smallBold">{t.addRoute.notSetUp}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          Set EXPO_PUBLIC_API_URL to the Ruta API (server/) to let commuters add routes.
+          {t.addRoute.notSetUpBody}
         </ThemedText>
       </ThemedView>
     );
@@ -116,13 +107,13 @@ export default function AddRouteScreen() {
   if (authStatus === 'signedOut') {
     return (
       <ThemedView style={styles.disabled}>
-        <ThemedText type="smallBold">Log in to add a route.</ThemedText>
+        <ThemedText type="smallBold">{t.addRoute.logInToAdd}</ThemedText>
         <Pressable
           onPress={() => router.replace({ pathname: '/sign-in', params: { next: 'add-route' } })}
           accessibilityRole="button"
           style={[styles.submit, { backgroundColor: theme.accent }]}>
           <ThemedText type="smallBold" style={{ color: theme.accentText }}>
-            Log in / Sign up
+            {t.addRoute.logIn}
           </ThemedText>
         </Pressable>
       </ThemedView>
@@ -132,11 +123,12 @@ export default function AddRouteScreen() {
   const km = lengthKm(path);
   const bigGap = path.some((p, i) => i > 0 && distanceM(path[i - 1], p) > MAX_GAP_M);
   const tooLong = walk && km > MAX_WALK_KM;
+  const need = t.addRoute.missingItems;
   const missing = [
-    points.length < 2 && 'at least 2 points on the map',
-    !walk && !signboard.trim() && 'the signboard',
-    !from.trim() && 'where it starts',
-    !to.trim() && 'where it ends',
+    points.length < 2 && need.points,
+    !walk && !signboard.trim() && need.signboard,
+    !from.trim() && need.from,
+    !to.trim() && need.to,
   ].filter(Boolean) as string[];
   const canSubmit = missing.length === 0 && !bigGap && !tooLong && !submitting;
 
@@ -162,11 +154,8 @@ export default function AddRouteScreen() {
       highlightRoute(created.properties.id);
       router.back();
     } catch (e) {
-      if (e instanceof ApiError) {
-        setError([e.message, ...e.issues.map((i) => i.message)].join('\n'));
-      } else {
-        setError('Something went wrong. Please try again.');
-      }
+      const issues = e instanceof ApiError && e.status === 400 ? e.issues.map((i) => i.message) : [];
+      setError([apiErrorText(e, t), ...issues].join('\n'));
     } finally {
       setSubmitting(false);
     }
@@ -177,26 +166,32 @@ export default function AddRouteScreen() {
       <DrawMap points={points} path={path} onAddPoint={(p) => setPoints((ps) => [...ps, p])} />
       <View style={styles.mapToolbar}>
         <ToolbarButton
-          label="↶ Undo"
+          label={t.addRoute.undo}
           disabled={points.length === 0}
           onPress={() => setPoints((ps) => ps.slice(0, -1))}
         />
-        <ToolbarButton label="Clear" disabled={points.length === 0} onPress={() => setPoints([])} />
         <ToolbarButton
-          label={snap ? (walk ? '✓ Follow paths' : '✓ Follow roads') : 'Straight lines'}
+          label={t.addRoute.clear}
+          disabled={points.length === 0}
+          onPress={() => setPoints([])}
+        />
+        <ToolbarButton
+          label={
+            snap ? (walk ? t.addRoute.followPaths : t.addRoute.followRoads) : t.addRoute.straight
+          }
           onPress={() => setSnap((v) => !v)}
         />
         {points.length > 0 && (
           <ThemedView type="backgroundElement" style={styles.stat}>
             <ThemedText type="small">
-              {points.length} points · {km.toFixed(1)} km
+              {t.addRoute.stats(points.length, km)}
             </ThemedText>
           </ThemedView>
         )}
       </View>
-      {SNAP_NOTE[snapped.status] && (
+      {hasSnapNote(snapped.status) && (
         <ThemedView type="backgroundElement" style={[styles.stat, styles.snapNote]}>
-          <ThemedText type="small">{SNAP_NOTE[snapped.status]}</ThemedText>
+          <ThemedText type="small">{t.addRoute.snap[snapped.status]}</ThemedText>
         </ThemedView>
       )}
     </View>
@@ -228,49 +223,56 @@ export default function AddRouteScreen() {
       contentContainerStyle={styles.formContent}
       keyboardShouldPersistTaps="handled">
       <ThemedText type="small" themeColor="textSecondary">
-        {walk
-          ? `${wide ? 'Click' : 'Tap'} where the walk starts and ends, close to the jeep lines it connects, plus any turns. The line follows footpaths; switch to straight lines for walkways the map doesn’t know (malls, footbridges).`
-          : `${wide ? 'Click' : 'Tap'} on the road at the first terminal, wherever the jeep turns, and at the last terminal. The line follows the streets between your taps; if it takes a wrong turn, undo and tap the right road.`}
+        {walk ? t.addRoute.instructionsWalk(wide) : t.addRoute.instructionsRide(wide)}
       </ThemedText>
       {bigGap && (
         <ThemedText type="small" style={styles.error}>
-          Two points are more than 5 km apart. Add points in between along the road.
+          {t.addRoute.bigGap}
         </ThemedText>
       )}
       {tooLong && (
         <ThemedText type="small" style={styles.error}>
-          Walk links can be up to {MAX_WALK_KM} km. Split a longer walk, or add it as a jeep or
-          tricycle route.
+          {t.addRoute.tooLong(MAX_WALK_KM)}
         </ThemedText>
       )}
 
-      <ThemedText type="smallBold">Uri</ThemedText>
-      <Segmented options={TYPES} value={type} onChange={setType} />
+      <ThemedText type="smallBold">{t.addRoute.type}</ThemedText>
+      <Segmented
+        options={TYPES.map((v) => ({ value: v, label: t.routes.types[v] }))}
+        value={type}
+        onChange={setType}
+      />
 
       {!walk &&
-        field('Karatula (signboard)', signboard, setSignboard, 'e.g. CUBAO – QUIAPO', 'characters')}
+        field(
+          t.addRoute.signboard,
+          signboard,
+          setSignboard,
+          t.addRoute.signboardPlaceholder,
+          'characters'
+        )}
       <View style={styles.row}>
         <View style={styles.flex}>
-          {field('Mula (start)', from, setFromInput, 'Tap the map, or type')}
+          {field(t.addRoute.from, from, setFromInput, t.addRoute.endPlaceholder)}
         </View>
         <View style={styles.flex}>
-          {field('Hanggang (end)', to, setToInput, 'Tap the map, or type')}
+          {field(t.addRoute.to, to, setToInput, t.addRoute.endPlaceholder)}
         </View>
       </View>
       {field(
-        walk ? 'Daan (optional)' : 'Via (optional)',
+        walk ? t.addRoute.viaWalk : t.addRoute.via,
         via,
         setVia,
-        walk ? 'e.g. footbridge, SM Cubao walkway' : 'e.g. Aurora Blvd'
+        walk ? t.addRoute.viaWalkPlaceholder : t.addRoute.viaPlaceholder
       )}
 
       {type === 'tricycle' && (
         <>
-          <ThemedText type="smallBold">City (for fares)</ThemedText>
+          <ThemedText type="smallBold">{t.addRoute.city}</ThemedText>
           <Segmented
             options={[
-              ...CITIES.map((c) => ({ value: c, label: c.replace('_', ' ') })),
-              { value: undefined, label: 'Other' },
+              ...CITIES.map((c) => ({ value: c, label: t.fares.cities[c] ?? c.replace('_', ' ') })),
+              { value: undefined, label: t.addRoute.otherCity },
             ]}
             value={city}
             onChange={setCity}
@@ -280,15 +282,22 @@ export default function AddRouteScreen() {
 
       {!walk && (
         <>
-          <ThemedText type="smallBold">Direction</ThemedText>
-          <Segmented options={DIRECTIONS} value={direction} onChange={setDirection} />
+          <ThemedText type="smallBold">{t.addRoute.direction}</ThemedText>
+          <Segmented
+            options={(['both', 'oneway'] as const).map((v) => ({
+              value: v,
+              label: t.addRoute.directions[v],
+            }))}
+            value={direction}
+            onChange={setDirection}
+          />
           {direction === 'oneway' && (
             <ThemedText type="small" themeColor="textSecondary">
-              Draw the points in the direction the vehicle travels.
+              {t.addRoute.onewayHint}
             </ThemedText>
           )}
 
-          {field('Oras ng biyahe (optional)', hours, setHours, 'e.g. 5:00 AM – 10:00 PM', 'none')}
+          {field(t.addRoute.hours, hours, setHours, t.addRoute.hoursPlaceholder, 'none')}
         </>
       )}
 
@@ -299,7 +308,7 @@ export default function AddRouteScreen() {
       )}
       {missing.length > 0 && (
         <ThemedText type="small" themeColor="textSecondary">
-          Still needed: {missing.join(', ')}.
+          {t.addRoute.missing(missing)}
         </ThemedText>
       )}
 
@@ -312,12 +321,12 @@ export default function AddRouteScreen() {
           <ActivityIndicator color={theme.accentText} />
         ) : (
           <ThemedText type="smallBold" style={{ color: theme.accentText }}>
-            {walk ? 'I-submit ang lakaran' : 'I-submit ang ruta'}
+            {walk ? t.addRoute.submitWalk : t.addRoute.submitRide}
           </ThemedText>
         )}
       </Pressable>
       <ThemedText type="small" themeColor="textSecondary">
-        New routes show as “unverified” until other commuters confirm them. Routes that get more reports than confirmations are hidden from trip suggestions.
+        {t.addRoute.footnote}
       </ThemedText>
     </ScrollView>
   );

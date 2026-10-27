@@ -9,6 +9,7 @@ import type {
   Landmark,
   Leg,
   LngLat,
+  PlaceLabel,
   RideLeg,
   TransitRoute,
   Trip,
@@ -347,20 +348,20 @@ function rideLeg(route: TransitRoute, ride: Ride, ctx: LegContext): RideLeg {
   };
 }
 
-/** Name a point after the closest landmark or loading point, e.g. "Legarda" or "near Gilmore". */
-export function placeName(pt: LngLat, landmarks: Landmark[], route?: TransitRoute): string {
+/** Name a point after the closest landmark or loading point: at "Legarda", near "Gilmore". */
+export function placeName(pt: LngLat, landmarks: Landmark[], route?: TransitRoute): PlaceLabel {
   const named = [
     ...landmarks.map((l) => ({ name: l.name, coord: l.coord })),
     ...(route?.properties.loadingPoints ?? []),
   ];
-  let best = { name: 'your destination', d: Infinity };
+  let best: { name: string; d: number } | null = null;
   for (const n of named) {
     const d = distanceM(pt, n.coord);
-    if (d < best.d) best = { name: n.name, d };
+    if (!best || d < best.d) best = { name: n.name, d };
   }
-  if (best.d <= 150) return best.name;
-  if (best.d <= 800) return `near ${best.name}`;
-  return 'the marked point';
+  if (best && best.d <= 150) return { name: best.name, near: false };
+  if (best && best.d <= 800) return { name: best.name, near: true };
+  return null;
 }
 
 function assemble(rawLegs: Leg[]): Trip {

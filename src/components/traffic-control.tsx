@@ -4,27 +4,17 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { TRAFFIC_COLORS } from '@/lib/traffic';
 import { useAppStore } from '@/store/useAppStore';
 import type { TrafficLevel } from '@/types';
 
 const REFRESH_MS = 30_000;
 
-const HOURS: { hour: number | null; label: string }[] = [
-  { hour: null, label: 'Live' },
-  { hour: 2, label: '2 AM' },
-  { hour: 8, label: '8 AM' },
-  { hour: 12, label: '12 NN' },
-  { hour: 18, label: '6 PM' },
-  { hour: 21, label: '9 PM' },
-];
+/** Hours to simulate traffic at; null is live. */
+const HOURS: (number | null)[] = [null, 2, 8, 12, 18, 21];
 
-const LEGEND: { level: TrafficLevel; label: string }[] = [
-  { level: 'free', label: 'Maluwag' },
-  { level: 'moderate', label: 'Katamtaman' },
-  { level: 'heavy', label: 'Traffic' },
-  { level: 'standstill', label: 'Hinto' },
-];
+const LEVELS: TrafficLevel[] = ['free', 'moderate', 'heavy', 'standstill'];
 
 /** Re-reads (dummy) live traffic every 30 s while mounted. */
 export function useTrafficTicker() {
@@ -37,34 +27,37 @@ export function useTrafficTicker() {
 
 export function TrafficControl() {
   const theme = useTheme();
+  const t = useT();
+  const hourLabel = (h: number | null) =>
+    h === null ? t.traffic.live : h === 12 ? t.traffic.noon : `${h % 12} ${h < 12 ? 'AM' : 'PM'}`;
   const simulatedHour = useAppStore((s) => s.simulatedHour);
   const setSimulatedHour = useAppStore((s) => s.setSimulatedHour);
 
   return (
     <View style={styles.wrap}>
       <View style={styles.legend}>
-        {LEGEND.map((l) => (
-          <View key={l.level} style={styles.legendItem}>
-            <View style={[styles.swatch, { backgroundColor: TRAFFIC_COLORS[l.level] }]} />
+        {LEVELS.map((level) => (
+          <View key={level} style={styles.legendItem}>
+            <View style={[styles.swatch, { backgroundColor: TRAFFIC_COLORS[level] }]} />
             <ThemedText type="small" themeColor="textSecondary">
-              {l.label}
+              {t.traffic.levels[level]}
             </ThemedText>
           </View>
         ))}
         <ThemedText type="small" themeColor="textSecondary" style={styles.demo}>
-          (demo data)
+          {t.traffic.demo}
         </ThemedText>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hours}>
         <ThemedText type="small" themeColor="textSecondary">
-          Traffic at:
+          {t.traffic.at}
         </ThemedText>
-        {HOURS.map((h) => {
-          const active = h.hour === simulatedHour;
+        {HOURS.map((hour) => {
+          const active = hour === simulatedHour;
           return (
             <Pressable
-              key={h.label}
-              onPress={() => setSimulatedHour(h.hour)}
+              key={hour ?? 'live'}
+              onPress={() => setSimulatedHour(hour)}
               accessibilityState={{ selected: active }}
               style={[
                 styles.hour,
@@ -74,7 +67,7 @@ export function TrafficControl() {
               <ThemedText
                 type="small"
                 style={{ color: active ? theme.accentText : theme.text }}>
-                {h.label}
+                {hourLabel(hour)}
               </ThemedText>
             </Pressable>
           );

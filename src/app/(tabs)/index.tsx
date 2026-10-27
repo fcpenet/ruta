@@ -1,6 +1,7 @@
-import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LanguageToggle } from '@/components/language-toggle';
 import { RutaMap } from '@/components/map/ruta-map';
 import { PlaceSearch } from '@/components/place-search';
 import { ThemedText } from '@/components/themed-text';
@@ -9,6 +10,7 @@ import { TrafficControl, useTrafficTicker } from '@/components/traffic-control';
 import { TripList } from '@/components/trip-list';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { landmarks } from '@/lib/dataSource';
 import { placeName } from '@/lib/planner';
 import { useAppStore } from '@/store/useAppStore';
@@ -21,14 +23,14 @@ export default function CommuteScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= WIDE_BREAKPOINT;
   const theme = useTheme();
+  const t = useT();
 
   const pickTarget = useAppStore((s) => s.pickTarget);
   const setPlace = useAppStore((s) => s.setPlace);
   const setPickTarget = useAppStore((s) => s.setPickTarget);
 
   const onPick = (coord: LngLat) => {
-    const near = placeName(coord, landmarks);
-    setPlace(pickTarget, { name: `📍 ${near}`, coord });
+    setPlace(pickTarget, { kind: 'pin', near: placeName(coord, landmarks), coord });
     setPickTarget(pickTarget === 'origin' ? 'destination' : 'origin');
   };
 
@@ -62,7 +64,11 @@ export default function CommuteScreen() {
       <SafeAreaView edges={['bottom']} style={[styles.sheet, { borderTopColor: theme.border }]}>
         <ThemedView style={styles.handleWrap}>
           <View style={[styles.handle, { backgroundColor: theme.border }]} />
-          <ThemedText type="smallBold">Ruta — jeep at tricycle planner</ThemedText>
+          <View style={styles.sheetTitle}>
+            <ThemedText type="smallBold">{t.search.sheetTitle}</ThemedText>
+            {/* The web header has its own switch. */}
+            {Platform.OS !== 'web' && <LanguageToggle />}
+          </View>
         </ThemedView>
         {panel}
       </SafeAreaView>
@@ -80,5 +86,6 @@ const styles = StyleSheet.create({
   sheetScroll: { flex: 1 },
   handleWrap: { alignItems: 'center', gap: Spacing.one, paddingTop: Spacing.two },
   handle: { width: 40, height: 4, borderRadius: 2 },
+  sheetTitle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   panelContent: { padding: Spacing.three, gap: Spacing.three },
 });

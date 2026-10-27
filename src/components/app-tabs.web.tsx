@@ -2,23 +2,27 @@ import { Tabs, TabList, TabTrigger, TabSlot, TabTriggerSlotProps, TabListProps }
 import { Pressable, type PressableProps, View, StyleSheet } from 'react-native';
 
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useT } from '@/i18n';
+
+import { LanguageToggle } from './language-toggle';
 
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
 export default function AppTabs() {
+  const t = useT();
   return (
     <Tabs style={styles.tabs}>
       <TabList asChild>
         <CustomTabList>
           <TabTrigger name="index" href="/" asChild>
-            <TabButton>Commute</TabButton>
+            <TabButton>{t.nav.commute}</TabButton>
           </TabTrigger>
           <TabTrigger name="routes" href="/routes" asChild>
-            <TabButton>Routes</TabButton>
+            <TabButton>{t.nav.routes}</TabButton>
           </TabTrigger>
           <TabTrigger name="fares" href="/fares" asChild>
-            <TabButton>Fares</TabButton>
+            <TabButton>{t.nav.fares}</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>
@@ -50,6 +54,7 @@ export function CustomTabList(props: TabListProps) {
           🚙 Ruta
         </ThemedText>
         {props.children}
+        <LanguageToggle />
       </View>
     </ThemedView>
   );

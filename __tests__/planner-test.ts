@@ -15,7 +15,7 @@ describe('planTrips', () => {
     const [ride] = rides(direct!.legs);
     expect(ride.signboard).toBe('CUBAO – QUIAPO');
     expect(ride.km).toBeGreaterThan(7);
-    expect(ride.alightName).toBe('Quiapo Church');
+    expect(ride.alightName).toEqual({ name: 'Quiapo Church', near: false });
     expect(direct!.totalFare).toBeGreaterThan(13);
     expect(direct!.transfers).toBe(0);
   });
@@ -26,7 +26,7 @@ describe('planTrips', () => {
     expect(transfer).toBeDefined();
     expect(transfer!.transfers).toBe(1);
     const [first] = rides(transfer!.legs);
-    expect(first.alightName).toMatch(/Philcoa/);
+    expect(first.alightName?.name).toMatch(/Philcoa/);
   });
 
   it('does not suggest riding a one-way route backwards', () => {

@@ -6,16 +6,24 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { type Messages, useT } from '@/i18n';
 import { searchLandmarks } from '@/lib/dataSource';
-import { type PickTarget, useAppStore } from '@/store/useAppStore';
+import { type Place, type PickTarget, useAppStore } from '@/store/useAppStore';
 
-const LABELS: Record<PickTarget, { label: string; placeholder: string }> = {
-  origin: { label: 'Mula', placeholder: 'Saan ka manggagaling?' },
-  destination: { label: 'Papunta', placeholder: 'Saan ka pupunta?' },
-};
+/** What the From/To field shows for a chosen place, in the current language. */
+function placeText(place: Place, t: Messages): string {
+  if (place.kind === 'landmark') return place.name;
+  if (place.kind === 'myLocation') return t.place.myLocation;
+  return `📍 ${t.place.name(place.near)}`;
+}
 
 export function PlaceSearch() {
   const theme = useTheme();
+  const t = useT();
+  const labels: Record<PickTarget, { label: string; placeholder: string }> = {
+    origin: { label: t.search.from, placeholder: t.search.fromPlaceholder },
+    destination: { label: t.search.to, placeholder: t.search.toPlaceholder },
+  };
   const origin = useAppStore((s) => s.origin);
   const destination = useAppStore((s) => s.destination);
   const pickTarget = useAppStore((s) => s.pickTarget);
@@ -36,17 +44,17 @@ export function PlaceSearch() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setLocError('Location permission denied — long-press the map instead.');
+        setLocError(t.search.locationDenied);
         return;
       }
       const pos = await Location.getCurrentPositionAsync({});
       setPlace('origin', {
-        name: 'Your location',
+        kind: 'myLocation',
         coord: [pos.coords.longitude, pos.coords.latitude],
       });
       setEditing(null);
     } catch {
-      setLocError("Couldn't get your location.");
+      setLocError(t.search.locationFailed);
     } finally {
       setLocating(false);
     }
@@ -58,13 +66,13 @@ export function PlaceSearch() {
     return (
       <View style={[styles.field, { borderColor: active ? theme.accent : theme.border }]}>
         <ThemedText type="smallBold" themeColor="textSecondary" style={styles.label}>
-          {LABELS[target].label}
+          {labels[target].label}
         </ThemedText>
         <TextInput
           style={[styles.input, { color: theme.text }]}
-          placeholder={LABELS[target].placeholder}
+          placeholder={labels[target].placeholder}
           placeholderTextColor={theme.textSecondary}
-          value={editing === target ? query : (place?.name ?? '')}
+          value={editing === target ? query : place ? placeText(place, t) : ''}
           onFocus={() => {
             setPickTarget(target);
             setEditing(target);
@@ -72,7 +80,7 @@ export function PlaceSearch() {
           }}
           onBlur={() => setTimeout(() => setEditing((e) => (e === target ? null : e)), 150)}
           onChangeText={setQuery}
-          accessibilityLabel={LABELS[target].placeholder}
+          accessibilityLabel={labels[target].placeholder}
         />
       </View>
     );
@@ -88,7 +96,7 @@ export function PlaceSearch() {
         <Pressable
           onPress={swapPlaces}
           style={[styles.swap, { borderColor: theme.border }]}
-          accessibilityLabel="Swap origin and destination">
+          accessibilityLabel={t.search.swap}>
           <ThemedText type="smallBold">⇅</ThemedText>
         </Pressable>
       </View>
@@ -101,7 +109,7 @@ export function PlaceSearch() {
                 <ActivityIndicator size="small" />
               ) : (
                 <ThemedText type="small" style={{ color: theme.accent }}>
-                  ◎ Use my location
+                  {t.search.useMyLocation}
                 </ThemedText>
               )}
             </Pressable>
@@ -111,7 +119,7 @@ export function PlaceSearch() {
               key={l.id}
               style={styles.result}
               onPress={() => {
-                setPlace(editing, { name: l.name, coord: l.coord });
+                setPlace(editing, { kind: 'landmark', name: l.name, coord: l.coord });
                 setEditing(null);
                 setPickTarget(editing === 'origin' ? 'destination' : 'origin');
               }}>
@@ -120,7 +128,7 @@ export function PlaceSearch() {
           ))}
           {query.length > 0 && results.length === 0 && (
             <ThemedText type="small" themeColor="textSecondary" style={styles.result}>
-              No match. Long-press the map to drop a pin.
+              {t.search.noMatch}
             </ThemedText>
           )}
         </View>
@@ -133,8 +141,7 @@ export function PlaceSearch() {
       )}
       {!editing && (
         <ThemedText type="small" themeColor="textSecondary">
-          Tip: long-press (or right-click) the map to set{' '}
-          {pickTarget === 'origin' ? 'where you start' : 'where you’re going'}.
+          {t.search.tip(pickTarget === 'origin')}
         </ThemedText>
       )}
     </ThemedView>
