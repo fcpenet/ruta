@@ -128,6 +128,18 @@ function nearestSegment(p: LngLat): string | null {
   return best?.id ?? null;
 }
 
+/** ETA multiplier at each vertex of `coords` (1 away from known roads). */
+export function vertexMultipliers(coords: LngLat[], date: Date): number[] {
+  const readings = new Map<string, number>();
+  return coords.map((p) => {
+    const id = nearestSegment(p);
+    if (!id) return 1;
+    const m = readings.get(id) ?? getTraffic(id, date).multiplier;
+    readings.set(id, m);
+    return m;
+  });
+}
+
 /**
  * Average ETA multiplier over a ride path, sampling each vertex against the
  * nearest traffic segment. Vertices away from known roads count as free-flow.
