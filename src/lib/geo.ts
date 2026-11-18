@@ -1,12 +1,25 @@
 import { lineString, point } from '@turf/helpers';
-import { distance as turfDistance } from '@turf/distance';
 import { length as turfLength } from '@turf/length';
 import { nearestPointOnLine } from '@turf/nearest-point-on-line';
 
 import type { LngLat } from '@/types';
 
+/** Turf's earth radius, so results match @turf/distance exactly. */
+const EARTH_RADIUS_M = 6371008.8;
+const rad = (deg: number) => ((deg % 360) * Math.PI) / 180;
+
+/**
+ * Haversine distance, the same operations in the same order as @turf/distance (so
+ * results are bit-identical) but without building two GeoJSON points per call —
+ * this runs in the planner's hot loops.
+ */
 export function distanceM(a: LngLat, b: LngLat): number {
-  return turfDistance(point(a), point(b), { units: 'meters' });
+  const dLat = rad(b[1] - a[1]);
+  const dLon = rad(b[0] - a[0]);
+  const h =
+    Math.pow(Math.sin(dLat / 2), 2) +
+    Math.pow(Math.sin(dLon / 2), 2) * Math.cos(rad(a[1])) * Math.cos(rad(b[1]));
+  return 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)) * EARTH_RADIUS_M;
 }
 
 export function lengthKm(coords: LngLat[]): number {

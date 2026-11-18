@@ -89,6 +89,44 @@ export function getAllTraffic(date: Date): TrafficReading[] {
 }
 
 const MATCH_RADIUS_KM = 0.08;
+/** MATCH_RADIUS_KM in degrees, padded so the bbox prefilter never drops a real match. */
+const MATCH_PAD_DEG = (MATCH_RADIUS_KM / 111) * 1.5;
+
+/** Built once: the planner calls pathTraffic for every candidate ride it considers. */
+const segmentLines = trafficSegments.map((s) => {
+  const coords = s.coords as LngLat[];
+  const xs = coords.map((c) => c[0]);
+  const ys = coords.map((c) => c[1]);
+  return {
+    id: s.id,
+    line: lineString(coords),
+    bbox: [
+      Math.min(...xs) - MATCH_PAD_DEG,
+      Math.min(...ys) - MATCH_PAD_DEG,
+      Math.max(...xs) + MATCH_PAD_DEG,
+      Math.max(...ys) + MATCH_PAD_DEG,
+    ],
+  };
+});
+
+/** Which road a vertex sits on doesn't change with time, so remember it. */
+const nearestCache = new Map<string, string | null>();
+const NEAREST_CACHE_MAX = 50_000;
+
+function nearestSegment(p: LngLat): string | null {
+  const key = `${p[0]},${p[1]}`;
+  const hit = nearestCache.get(key);
+  if (hit !== undefined) return hit;
+  let best: { id: string; d: number } | null = null;
+  for (const { id, line, bbox } of segmentLines) {
+    if (p[0] < bbox[0] || p[1] < bbox[1] || p[0] > bbox[2] || p[1] > bbox[3]) continue;
+    const d = pointToLineDistance(point(p), line, { units: 'kilometers' });
+    if (d <= MATCH_RADIUS_KM && (!best || d < best.d)) best = { id, d };
+  }
+  if (nearestCache.size >= NEAREST_CACHE_MAX) nearestCache.clear();
+  nearestCache.set(key, best?.id ?? null);
+  return best?.id ?? null;
+}
 
 /**
  * Average ETA multiplier over a ride path, sampling each vertex against the
@@ -99,16 +137,16 @@ export function pathTraffic(
   date: Date
 ): { multiplier: number; level: TrafficLevel } {
   if (path.length === 0) return { multiplier: 1, level: 'free' };
-  const lines = trafficSegments.map((s) => ({ id: s.id, line: lineString(s.coords) }));
+  const readings = new Map<string, number>();
   let sum = 0;
   let worst = 1;
   for (const p of path) {
-    let best: { id: string; d: number } | null = null;
-    for (const { id, line } of lines) {
-      const d = pointToLineDistance(point(p), line, { units: 'kilometers' });
-      if (d <= MATCH_RADIUS_KM && (!best || d < best.d)) best = { id, d };
+    const id = nearestSegment(p);
+    let m = 1;
+    if (id) {
+      m = readings.get(id) ?? getTraffic(id, date).multiplier;
+      readings.set(id, m);
     }
-    const m = best ? getTraffic(best.id, date).multiplier : 1;
     sum += m;
     worst = Math.max(worst, m);
   }
