@@ -25,6 +25,56 @@ npm test             # planner, fare and traffic unit tests
 npm run typecheck && npm run lint
 ```
 
+## Install on an Android phone
+
+MapLibre is native code, so Ruta doesn't run in Expo Go. Install it on the phone with one of the options below.
+
+`EXPO_PUBLIC_API_URL` is baked into the app when it's built. Set it at build time, as shown below, or the installed app has bundled routes only and no "Add route".
+
+### Over USB, from your computer
+
+Needs Android Studio (for the Android SDK and Java).
+
+1. On the phone, open **Settings → About phone** and tap **Build number** seven times to unlock Developer options.
+2. In **Settings → Developer options**, turn on **USB debugging**.
+3. Plug the phone in and accept the "Allow USB debugging?" prompt. `adb devices` should list it.
+4. Build and install:
+
+   ```bash
+   # Debug build: loads JS from your computer's dev server, so keep `npx expo start` running
+   EXPO_PUBLIC_API_URL=https://ruta-api-jem.fly.dev npx expo run:android --device
+
+   # Release build: standalone, keeps working after you unplug
+   EXPO_PUBLIC_API_URL=https://ruta-api-jem.fly.dev npx expo run:android --device --variant release
+   ```
+
+   `--device` with no name asks which connected device to use.
+
+### APK from EAS, no Android Studio
+
+EAS builds in the cloud. By default it makes an `.aab` for the Play Store, which phones can't install directly. To get an `.apk`, add a profile to `eas.json`:
+
+```json
+{
+  "build": {
+    "preview": {
+      "android": { "buildType": "apk" },
+      "env": { "EXPO_PUBLIC_API_URL": "https://ruta-api-jem.fly.dev" }
+    }
+  }
+}
+```
+
+Then:
+
+```bash
+npx eas-cli@latest build -p android --profile preview
+```
+
+When the build finishes, open its link (printed by the command and shown on the build page at expo.dev) on the phone, download the APK and install it. Android asks you to allow installs from your browser the first time. Alternatively, download the file and run `adb install path/to/ruta.apk` with the phone connected over USB as above.
+
+To update the app later, install a newer APK over the old one.
+
 ## Deploy (web → Vercel)
 
 `vercel.json` builds with `expo export -p web` and serves `dist/` as a single-page app.
